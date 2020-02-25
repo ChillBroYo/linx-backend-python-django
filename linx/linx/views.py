@@ -1,3 +1,6 @@
+from uuid import UUID
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from django.db import connection
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -15,17 +18,20 @@ def get_convo(request):
         objs.append([val.user_id, val.msg, val.ts])
     return HttpResponse(json.dumps(objs), content_type="application/json")
 
+# Signup- Username doesn't have to be an email
 def sign_up(request):
-    uid = "\"" + request.GET['uid'] + "\""
-    password = "\"" + request.GET['password'] + "\""
-    info = "\"" + request.GET['info'] + "\""
+    email = request.GET['email']
+    uid = request.GET['username']
+    password = request.GET['password']
+    info = request.GET['info']
     objs = {}
-    messages = Messages.objects.raw("SELECT 1 as id,* from user WHERE username = {};".format(uid))
-    if len(messages) > 0:
+    if User.objects.filter(username=username).exists():
         objs = {"success": "false", "errmsg": "Username Already Exists"}
         return HttpResponse(json.dumps(objs), content_type="application/json")
-    with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO user(username, password, info) VALUES({}, {}, {});".format(uid, password, info))
+
+    user = User.objects.create_user(uid, email, password)
+    user.info = info
+    user.save()
     objs["success"] = "true"
 
     return HttpResponse(json.dumps(objs), content_type="application/json")
