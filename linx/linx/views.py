@@ -33,7 +33,7 @@ def sign_up(request):
 def sign_in(request):
     uid = "\"" + request.GET['uid'] + "\""
     password = request.GET['password']
-    objs = {}
+    objs = {"success": "false"}
     messages = User.objects.raw("SELECT 1 as id,* from user WHERE username = {};".format(uid))
     for val in messages:
         if val.password != password:
