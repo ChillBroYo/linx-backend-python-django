@@ -5,7 +5,6 @@ from django.db import connection
 from django.http import HttpResponse
 from django.shortcuts import render
 from linx.models import User, Messages
-import requests
 import json
 import datetime
 
