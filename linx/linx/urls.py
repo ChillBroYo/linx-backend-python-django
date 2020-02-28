@@ -19,10 +19,10 @@ from . import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('messages', views.get_messages, name='messages'),
-    path('get_convo', views.get_convo, name='convo'),
-    path('add_message', views.add_message, name='addMessage'),
-    path('sign_in', views.sign_in, name='signin'),
-    path('sign_up', views.sign_up, name='signup'),
-    path('update_profile', views.update_profile, name='updateprofile'),
+    path('messages/', views.get_messages, name='messages'),
+    path('get_convo/', views.get_convo, name='convo'),
+    path('add_message/', views.add_message, name='addMessage'),
+    path('sign_in/', views.sign_in, name='signin'),
+    path('sign_up/', views.sign_up, name='signup'),
+    path('update_profile/', views.update_profile, name='updateprofile'),
 ]
