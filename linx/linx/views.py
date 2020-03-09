@@ -31,12 +31,9 @@ def sign_up(request):
     user.info = info
     user.save()
     new_user = User.objects.filter(username=username, password=password)
-    random_token = uuid.uuid4()
-    token = TokenAuth(user_id=new_user.uid, token=random_token)
-    token.save()
 
+    objs["token"] = generate_new_token(new_user.uid)
     objs["success"] = "true"
-    objs["token"] = random_token
     objs["uid"] = new_user.uid
 
     return JsonResponse(json.dumps(objs))
@@ -58,18 +55,27 @@ def get_convo(request):
     return HttpResponse(json.dumps(objs), content_type="application/json")
 
 def sign_in(request):
-    uid = "\"" + request.GET['uid'] + "\""
+    """Sign in request that with either authentiate and generate appropriate tokens or reject them
+        Request Args:
+        username: the user's username
+        password: the user's password
+    """
+    username = request.GET['username']
     password = request.GET['password']
     objs = {"success": "false"}
-    messages = User.objects.raw("SELECT 1 as id,* from user WHERE username = {};".format(uid))
-    for val in messages:
-        if val.password != password:
-            objs = {"success": "false", "errmsg": "Invalid Password"}
-            return HttpResponse(json.dumps(objs), content_type="application/json")
+    messages = User.objects.filter(username=username, password=password)
+    if messages is not None:
+        is_valid_token, token = check_auth(messages[0].uid, None, None)
+        if is_valid_token is False:
+            objs["token"] = generate_new_token(messages[0].uid)
         else:
-            objs["success"] = "true"
-            objs[val.username] = val.info
-    return HttpResponse(json.dumps(objs), content_type="application/json")
+            objs["token"] = token
+        objs["info"] = messages[0].info
+        objs["success"] = "true"
+    else:
+        objs["errmsg"] = "Invalid username or password"
+
+    return JsonResponse(json.dumps(objs))
 
 def add_message(request):
     uid = "\"" + request.GET['uid'] + "\""
@@ -117,8 +123,25 @@ def check_auth(uid, token, ts_check):
             token (token string): a token value to check
             ts_check (timestamp): the ts of the time to check
     """
-    token_row = TokenAuth.objects.filter(uid=uid, token=token)
+    if token is None:
+        token_row = TokenAuth.objects.filter(uid=uid).order_by("-created_at")
+    else:
+        token_row = TokenAuth.objects.filter(uid=uid, token=token).order_by("-created_at")
+
+    if token_row is None:
+        return False, None
+
     token_life = token_row.created_at+timedelta(hours=2)
     if ts_check < token_life:
-        return False
-    return True
+        return False, token_row[0].token
+    return True, token_row[0].token
+
+def generate_new_token(uid):
+    """Function to generate authenticated users, auth tokens
+        Args:
+            uid (string): a user's id
+    """
+    random_token = uuid.uuid4()
+    token = TokenAuth(user_id=uid, token=random_token)
+    token.save()
+    return random_token
