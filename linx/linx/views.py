@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta
 from django.contrib.auth import authenticate
 from django.db import connection
+from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from linx.models import User, Messages, TokenAuth
 
@@ -38,21 +39,34 @@ def sign_up(request):
 
     return JsonResponse(json.dumps(objs))
 
-def get_convo(request):
-    """Grab the last 1000 messages from the db for a specific uid, token and time and return them
-    in a tuple array of messages in order sent/recieved (msg, timestamp)
+def get_messages(request):
+    """Gets a list of all the user profiles that a user has messaged
         Request Args:
         uid: the user's id
-        oid: the other user's id
-        ts: the timestamp to look for at that time or before
     """
     uid = request.GET['uid']
-    oid = request.GET['oid'] + "\""
-    objs = []
-    messages = Messages.objects.raw("SELECT 1 as id,* FROM messages AS m WHERE (m.user_id = {} and m.other_id = {}) or (m.other_id = {} and m.user_id = {}) ORDER BY m.ts;".format(uid, oid, uid, oid))
-    for val in messages:
-        objs.append([val.user_id, val.msg, val.ts])
-    return HttpResponse(json.dumps(objs), content_type="application/json")
+    objs = {}
+    objs["success"] = "true"
+
+    users = {}
+    #: Maybe cache or find better way of getting most recent id's messaged
+    message_sent = Messages.objects.filter(user_id=uid,
+                                           ts__lte=datetime.now()).order_by('-ts')[:1000]
+    message_recieved = Messages.objects.filter(other_id=uid,
+                                               ts__lte=datetime.now()).order_by('-ts')[:1000]
+    for msg in message_sent:
+        if users.get(msg.user_id) is None:
+            users[msg.user_id] = 1
+        else:
+            users[msg.user_id] += 1
+    for msg in message_recieved:
+        if users.get(msg.user_id) is None:
+            users[msg.user_id] = 1
+        else:
+            users[msg.user_id] += 1
+    objs["users"] = users
+
+    return JsonResponse(json.dumps(objs))
 
 def sign_in(request):
     """Sign in request that with either authentiate and generate appropriate tokens or reject them
@@ -104,17 +118,24 @@ def update_profile(request):
 
     return HttpResponse(json.dumps(objs), content_type="application/json")
 
-def get_messages(request):
-    uid = "\"" + request.GET['uid'] + "\""
-    objs = []
-    messages = Messages.objects.raw("SELECT 1 as id, user_id, other_id FROM messages WHERE user_id = {} or oid = {} ORDER BY ts;".format(uid, uid))
-    for val in messages:
-        if val.user_id == request.GET["uid"]:
-            objs.append(val.other_id)
-        else:
-            objs.append(val.user_id)
-    objs = list(set(objs))
-    return HttpResponse(json.dumps(objs), content_type="application/json")
+def get_convo(request):
+    """Get the last 1000 message rows for a uid and another uid from a specified time
+        Args:
+            uid (string): a user's id
+            oid (string): the other user's id
+            token (string): a user's token for auth
+            ts_query (time): time to query for
+    """
+    objs = {}
+    uid = request.GET['uid']
+    oid = request.GET['oid']
+    token = request.GET['token']
+    ts_query = request.GET['ts']
+    objs["success"] = "true"
+    objs["token"] = check_generate_token(uid, token)
+    objs["messages"] = Messages.objects.filter(Q(uid=uid, oid=oid, ts__lte=ts_query) |
+                                               Q(oid=uid, uid=oid, ts__lte=ts_query)).order_by('-ts')[:1000]
+    return JsonResponse(json.dumps(objs))
 
 def check_auth(uid, token, ts_check):
     """Utility function used for checking if the token is valid for a user
@@ -124,14 +145,14 @@ def check_auth(uid, token, ts_check):
             ts_check (timestamp): the ts of the time to check
     """
     if token is None:
-        token_row = TokenAuth.objects.filter(uid=uid).order_by("-created_at")
+        token_row = TokenAuth.objects.filter(uid=uid).order_by("-created_at")[:1]
     else:
-        token_row = TokenAuth.objects.filter(uid=uid, token=token).order_by("-created_at")
+        token_row = TokenAuth.objects.filter(uid=uid, token=token).order_by("-created_at")[:1]
 
     if token_row is None:
         return False, None
 
-    token_life = token_row.created_at+timedelta(hours=2)
+    token_life = token_row[0].created_at+timedelta(hours=2)
     if ts_check < token_life:
         return False, token_row[0].token
     return True, token_row[0].token
@@ -145,3 +166,15 @@ def generate_new_token(uid):
     token = TokenAuth(user_id=uid, token=random_token)
     token.save()
     return random_token
+
+def check_generate_token(uid, token):
+    """Function to generate a new token if there isn't one
+        Args:
+            uid (string): a user's id
+            token (string): a token match
+    """
+    exist, token = check_auth(uid, token, datetime.now())
+    if not exist:
+        return generate_new_token(uid)
+    return token
+    
