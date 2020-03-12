@@ -3,9 +3,8 @@ import uuid
 import json
 from datetime import datetime, timedelta
 from django.contrib.auth import authenticate
-from django.db import connection
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
+from django.http import JsonResponse
 from linx.models import User, Messages, TokenAuth
 
 # Signup- Username doesn't have to be an email
@@ -92,31 +91,33 @@ def sign_in(request):
     return JsonResponse(json.dumps(objs))
 
 def add_message(request):
-    uid = "\"" + request.GET['uid'] + "\""
-    oid = "\"" + request.GET['oid'] + "\""
-    msg = "\"" + request.GET['msg'] + "\""
-    ts = "\"" + str(datetime.now()) + "\""
+    """Add a message to the message table
+        Args:
+            uid: the user who sent the message's id
+            oid: the user who is recieving the message's id
+            token: a potentially valid token to use
+            msg: the message to send
+            ts_query: timestamp on the message
+    """
+    uid = request.GET['uid']
+    oid = request.GET['oid']
+    token = request.GET['token']
+    msg = request.GET['msg']
+    ts_query = str(datetime.now())
     objs = {}
-    with connection.cursor() as cursor:
-        cursor.execute("INSERT INTO messages(user_id, other_id, msg, ts) VALUES({}, {}, {}, {});".format(uid, oid, msg, ts))
+    objs["token"] = check_generate_token(uid, token)
+    message = Messages(None, uid, oid, msg, ts_query)
+    message.save()
     objs["success"] = "true"
 
-    return HttpResponse(json.dumps(objs), content_type="application/json")
+    return JsonResponse(json.dumps(objs))
 
 def update_profile(request):
-    uid = "\"" + request.GET['uid'] + "\""
-    password = "\"" + request.GET['password'] + "\""
-    info = "\"" + request.GET['info'] + "\""
-    objs = {}
-    messages = Messages.objects.raw("SELECT 1 as id,* from user WHERE username = {};".format(uid))
-    if len(messages) == 0:
-        objs = {"success": "false", "errmsg": "Username Does Not Exist"}
-        return HttpResponse(json.dumps(objs), content_type="application/json")
-    with connection.cursor() as cursor:
-        cursor.execute("UPDATE user SET password = {}, info = {} WHERE username = {};".format(password, info, uid))
-    objs["success"] = "true"
-
-    return HttpResponse(json.dumps(objs), content_type="application/json")
+    #uid = request.GET['uid']
+    #password = request.GET['token']
+    #info = request.GET['info']
+    #objs = {}
+    pass
 
 def get_convo(request):
     """Get the last 1000 message rows for a uid and another uid from a specified time
@@ -175,6 +176,8 @@ def check_generate_token(uid, token):
     """
     exist, token = check_auth(uid, token, datetime.now())
     if not exist:
-        return generate_new_token(uid)
+        new_token = generate_new_token(uid)
+        print("User {} has expired token {} and is being given {}\n".format(uid, token, new_token))
+        return new_token
     return token
     
