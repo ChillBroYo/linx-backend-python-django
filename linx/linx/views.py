@@ -42,11 +42,17 @@ def get_messages(request):
     """Gets a list of all the user profiles that a user has messaged
         Request Args:
         uid: the user's id
+        token (string): a user's token for auth
     """
     uid = request.GET['uid']
+    token = request.GET['token']
     objs = {}
+    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    if not is_valid:
+        objs["success"] = "false"
+        objs["errmsg"] = "Invalid Token"
+        return JsonResponse(json.dumps(objs))
     objs["success"] = "true"
-
     users = {}
     #: Maybe cache or find better way of getting most recent id's messaged
     message_sent = Messages.objects.filter(user_id=uid,
@@ -105,7 +111,11 @@ def add_message(request):
     msg = request.GET['msg']
     ts_query = str(datetime.now())
     objs = {}
-    objs["token"] = check_generate_token(uid, token)
+    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    if not is_valid:
+        objs["success"] = "false"
+        objs["errmsg"] = "Invalid Token"
+        return JsonResponse(json.dumps(objs))
     message = Messages(None, uid, oid, msg, ts_query)
     message.save()
     objs["success"] = "true"
@@ -113,11 +123,52 @@ def add_message(request):
     return JsonResponse(json.dumps(objs))
 
 def update_profile(request):
-    #uid = request.GET['uid']
-    #password = request.GET['token']
-    #info = request.GET['info']
-    #objs = {}
-    pass
+    """Set the profile information for a user
+        Args:
+            uid: the user who sent the message's id
+            username: the possibly new username for user
+            password: the possibly new password for user
+            token: a potentially valid token to use
+            info: the user's possibly new info
+    """
+    uid = request.GET['uid']
+    username = request.GET['username']
+    password = request.GET['password']
+    token = request.GET['token']
+    info = request.GET['info']
+    objs = {}
+    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    if not is_valid:
+        objs["success"] = "false"
+        objs["errmsg"] = "Invalid Token"
+        return JsonResponse(json.dumps(objs))
+
+    User.objects.filter(user_id=uid).update(username=username, password=password, info=info)
+    objs["success"] = "true"
+
+    return JsonResponse(json.dumps(objs))
+
+def get_profile(request):
+    """Get the profile information for a user
+        Args:
+            uid: the user who sent the message's id
+            token: a potentially valid token to use
+    """
+    uid = request.GET['uid']
+    token = request.GET['token']
+    objs = {}
+    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    if not is_valid:
+        objs["success"] = "false"
+        objs["errmsg"] = "Invalid Token"
+        return JsonResponse(json.dumps(objs))
+    user = User.objects.filter(user_id=uid)
+    objs["username"] = user.username
+    objs["password"] = user.password
+    objs["info"] = user.info
+    objs["success"] = "true"
+
+    return JsonResponse(json.dumps(objs))
 
 def get_convo(request):
     """Get the last 1000 message rows for a uid and another uid from a specified time
@@ -132,10 +183,15 @@ def get_convo(request):
     oid = request.GET['oid']
     token = request.GET['token']
     ts_query = request.GET['ts']
+    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    if not is_valid:
+        objs["success"] = "false"
+        objs["errmsg"] = "Invalid Token"
+        return JsonResponse(json.dumps(objs))
     objs["success"] = "true"
-    objs["token"] = check_generate_token(uid, token)
-    objs["messages"] = Messages.objects.filter(Q(uid=uid, oid=oid, ts__lte=ts_query) |
-                                               Q(oid=uid, uid=oid, ts__lte=ts_query)).order_by('-ts')[:1000]
+    objs["messages"] = Messages.objects.filter(
+        Q(uid=uid, oid=oid, ts__lte=ts_query) |
+        Q(oid=uid, uid=oid, ts__lte=ts_query)).order_by('-ts')[:1000]
     return JsonResponse(json.dumps(objs))
 
 def check_auth(uid, token, ts_check):
