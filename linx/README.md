@@ -5,8 +5,8 @@ Steps for deployment:
 ---------------------
 In the directory with this readme run the following commands to setup the db:
 - python3 manage.py makemigrations
-- python manage.py migrate
-- python manage.py migrate --run-syncdb
+- python3 manage.py migrate
+- python3 manage.py migrate --run-syncdb
 
 (2) After Setting up the db
 ---------------------------
@@ -55,26 +55,39 @@ Endpoint Documentation
 ----------------------
 Here are the endpoints and params:
 - sign_up: used to sign up a user
- - params:
-   - uid: username of new person to sign up
-   - password: password of new person to sign up
-   - info: user info in a mapping
+  - params:
+    - uid: username of new person to sign up
+    - password: password of new person to sign up
+    - info: user info in a mapping
+  - returns:
+   - jsonObject with a success flag of whether it succeeded or not
 
 - sign_in: used to validate whether a user exists or not
- - params:
-   - uid: username of person to sign in
-   - password: password of person to sign in
+  - params:
+    - uid: username of person to sign in
+    - password: password of person to sign in
+  - returns:
+   - jsonObject with a success flag of whether it succeeded or not
 
 - add_message: used to add a message between 2 users
- - uid: the user sending the message
- - oid: the user who is recieving the message
- - msg: the message sent
+  - params:
+    - uid: the user sending the message
+    - oid: the user who is recieving the message
+    - msg: the message sent
+  - returns:
+   - jsonObject with a success flag of whether it succeeded or not
 
 - get_convo: used to see the whole message list between users
- - uid: the first user
- - oid: the other user
+  - params:
+    - uid: the first user
+    - oid: the other user
+  - returns:
+   - jsonObject with all the messages between the 2 users
 
 - update_profile: used to change the user profile info after sign up
- - uid: the user to change
- - password: the password to change to
- - info: the user info the change to
+  - params:
+    - uid: the user to change
+    - password: the password to change to
+    - info: the user info the change to
+  - returns:
+   - jsonObject with a success flag of whether it succeeded or not
