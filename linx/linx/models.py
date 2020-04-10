@@ -10,7 +10,7 @@ class User(models.Model):
         created_at: the time the user was created
     """
     uid = models.AutoField(primary_key=True)
-    username = models.CharField('username', max_length=50, primary_key=True)
+    username = models.CharField('username', max_length=50, unique=True)
     password = models.CharField('password', max_length=50)
     info = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

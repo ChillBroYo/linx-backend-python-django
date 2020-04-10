@@ -27,7 +27,7 @@ def sign_up(request):
         return JsonResponse(json.dumps(objs))
 
     objs = {}
-    user = User.objects.create_user(username, email, password)
+    user = User.objects.create_user(username=username, email=email, password=password)
     user.info = info
     user.save()
     new_user = User.objects.filter(username=username, password=password)
@@ -83,18 +83,19 @@ def sign_in(request):
     password = request.GET['password']
     objs = {"success": "false"}
     messages = User.objects.filter(username=username, password=password)
-    if messages is not None:
+    if messages:
         is_valid_token, token = check_auth(messages[0].uid, None, None)
         if is_valid_token is False:
-            objs["token"] = generate_new_token(messages[0].uid)
+            objs["token"] = str(generate_new_token(messages[0].uid))
         else:
-            objs["token"] = token
-        objs["info"] = messages[0].info
+            objs["token"] = str(token)
+        objs["info"] = str(messages[0].info)
         objs["success"] = "true"
     else:
         objs["errmsg"] = "Invalid username or password"
 
-    return JsonResponse(json.dumps(objs))
+    print("Sign In Result: {}".format(json.dumps(objs)))
+    return JsonResponse(json.dumps(objs), safe=False)
 
 def add_message(request):
     """Add a message to the message table

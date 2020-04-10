@@ -2,6 +2,7 @@
 TBD IMPROVEMENTS: Create different table to "cache" a user's recent messages to people
 """
 from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, UserManager
 
 class User(models.Model):
     """User model for user information
@@ -11,8 +12,9 @@ class User(models.Model):
         info: any additonal information stored in JSON format
         created_at: the time the user was created
     """
+    objects = UserManager()
     uid = models.AutoField(primary_key=True)
-    username = models.CharField('username', max_length=50, primary_key=True)
+    username = models.CharField('username', max_length=50, unique=True)
     password = models.CharField('password', max_length=50)
     info = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
