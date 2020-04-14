@@ -1,13 +1,17 @@
 """Webcall views dealing with all backend functionality"""
 import uuid
 import json
-from datetime import datetime, timedelta
-from django.contrib.auth import authenticate
+import logging
+import datetime
 from django.db.models import Q
 from django.http import JsonResponse
-from linx.models import User, Messages, TokenAuth
+from django.utils import timezone
+from linx.models import LUser, Messages, TokenAuth
 
-# Signup- Username doesn't have to be an email
+
+# Get Logger
+LOGGER = logging.getLogger('django')
+
 def sign_up(request):
     """User signup through app based sign up strategy
         Only adds a new user and if sucessful creates a new key and returns the new uid and token
@@ -20,23 +24,24 @@ def sign_up(request):
     email = request.GET['email']
     username = request.GET['username']
     password = request.GET['password']
+    security_level = request.GET['security_level']
     info = request.GET['info']
-    user = authenticate(username=username, password=password)
-    if user is not None:
+    user = LUser.objects.filter(username=username)
+    if user:
         objs = {"success": "false", "errmsg": "Username Already Exists"}
-        return JsonResponse(json.dumps(objs))
+        return JsonResponse(objs)
 
     objs = {}
-    user = User.objects.create_user(username=username, email=email, password=password)
-    user.info = info
-    user.save()
-    new_user = User.objects.filter(username=username, password=password)
+    new_user = LUser.create_luser(username=username, email=email,
+                                  password=password, security_level=security_level,
+                                  info=info)
 
     objs["token"] = generate_new_token(new_user.uid)
     objs["success"] = "true"
     objs["uid"] = new_user.uid
 
-    return JsonResponse(json.dumps(objs))
+    LOGGER.info("Sign Up Result: %s", json.dumps(str(objs)))
+    return JsonResponse(objs)
 
 def get_messages(request):
     """Gets a list of all the user profiles that a user has messaged
@@ -47,31 +52,30 @@ def get_messages(request):
     uid = request.GET['uid']
     token = request.GET['token']
     objs = {}
-    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
         objs["success"] = "false"
         objs["errmsg"] = "Invalid Token"
-        return JsonResponse(json.dumps(objs))
+        return JsonResponse(objs)
     objs["success"] = "true"
     users = {}
-    #: Maybe cache or find better way of getting most recent id's messaged
-    message_sent = Messages.objects.filter(user_id=uid,
-                                           ts__lte=datetime.now()).order_by('-ts')[:1000]
-    message_recieved = Messages.objects.filter(other_id=uid,
-                                               ts__lte=datetime.now()).order_by('-ts')[:1000]
-    for msg in message_sent:
-        if users.get(msg.user_id) is None:
-            users[msg.user_id] = 1
+    # Maybe cache or find better way of getting most recent id's messaged
+    msg_sent = Messages.objects.filter(user_id=uid).order_by('-created_at')[:1000]
+    msg_recieved = Messages.objects.filter(other_id=uid).order_by('-created_at')[:1000]
+    for msg in msg_sent:
+        if users.get(msg.other_id) is None:
+            users[msg.other_id] = 1
         else:
-            users[msg.user_id] += 1
-    for msg in message_recieved:
+            users[msg.other_id] += 1
+    for msg in msg_recieved:
         if users.get(msg.user_id) is None:
             users[msg.user_id] = 1
         else:
             users[msg.user_id] += 1
     objs["users"] = users
 
-    return JsonResponse(json.dumps(objs))
+    LOGGER.info("Get Messages Result: %s", objs)
+    return JsonResponse(objs)
 
 def sign_in(request):
     """Sign in request that with either authentiate and generate appropriate tokens or reject them
@@ -81,21 +85,25 @@ def sign_in(request):
     """
     username = request.GET['username']
     password = request.GET['password']
-    objs = {"success": "false"}
-    messages = User.objects.filter(username=username, password=password)
-    if messages:
-        is_valid_token, token = check_auth(messages[0].uid, None, None)
-        if is_valid_token is False:
-            objs["token"] = str(generate_new_token(messages[0].uid))
-        else:
-            objs["token"] = str(token)
-        objs["info"] = str(messages[0].info)
-        objs["success"] = "true"
-    else:
-        objs["errmsg"] = "Invalid username or password"
 
-    print("Sign In Result: {}".format(json.dumps(objs)))
-    return JsonResponse(json.dumps(objs), safe=False)
+    objs = {}
+    objs["success"] = True
+    user = LUser.objects.filter(username=username, password=password)
+    if not user:
+        objs = {}
+        objs["success"] = False
+        objs["errmsg"] = "User doesn't exist"
+        return JsonResponse(objs)
+
+    auth_user = TokenAuth.objects.filter(user_id=user[0].uid)
+    if not auth_user:
+        objs["token"] = str(TokenAuth.create_token_for_user(user.uid))
+    else:
+        objs["token"] = str(auth_user[0].token)
+
+    objs["user"] = str(user[0])
+    LOGGER.info("Sign In Result: %s", objs)
+    return JsonResponse(objs)
 
 def add_message(request):
     """Add a message to the message table
@@ -104,24 +112,23 @@ def add_message(request):
             oid: the user who is recieving the message's id
             token: a potentially valid token to use
             msg: the message to send
-            ts_query: timestamp on the message
     """
     uid = request.GET['uid']
     oid = request.GET['oid']
     token = request.GET['token']
     msg = request.GET['msg']
-    ts_query = str(datetime.now())
     objs = {}
-    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
         objs["success"] = "false"
         objs["errmsg"] = "Invalid Token"
-        return JsonResponse(json.dumps(objs))
-    message = Messages(None, uid, oid, msg, ts_query)
+        return JsonResponse(objs)
+    message = Messages(None, uid, oid, msg)
     message.save()
     objs["success"] = "true"
 
-    return JsonResponse(json.dumps(objs))
+    LOGGER.info("Add Message Result: %s", objs)
+    return JsonResponse(objs)
 
 def update_profile(request):
     """Set the profile information for a user
@@ -138,16 +145,17 @@ def update_profile(request):
     token = request.GET['token']
     info = request.GET['info']
     objs = {}
-    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
         objs["success"] = "false"
         objs["errmsg"] = "Invalid Token"
-        return JsonResponse(json.dumps(objs))
+        return JsonResponse(objs)
 
-    User.objects.filter(user_id=uid).update(username=username, password=password, info=info)
+    LUser.objects.filter(user_id=uid).update(username=username, password=password, info=info)
     objs["success"] = "true"
 
-    return JsonResponse(json.dumps(objs))
+    LOGGER.info("Update Profile Result: %s", objs)
+    return JsonResponse(objs)
 
 def get_profile(request):
     """Get the profile information for a user
@@ -158,18 +166,15 @@ def get_profile(request):
     uid = request.GET['uid']
     token = request.GET['token']
     objs = {}
-    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
         objs["success"] = "false"
         objs["errmsg"] = "Invalid Token"
-        return JsonResponse(json.dumps(objs))
-    user = User.objects.filter(user_id=uid)
-    objs["username"] = user.username
-    objs["password"] = user.password
-    objs["info"] = user.info
-    objs["success"] = "true"
+        return JsonResponse(objs)
+    user = LUser.objects.filter(user_id=uid)
 
-    return JsonResponse(json.dumps(objs))
+    LOGGER.info("Get Profile Result: %s", user[0])
+    return JsonResponse(user[0])
 
 def get_convo(request):
     """Get the last 1000 message rows for a uid and another uid from a specified time
@@ -177,23 +182,31 @@ def get_convo(request):
             uid (string): a user's id
             oid (string): the other user's id
             token (string): a user's token for auth
-            ts_query (time): time to query for
+            ts: timestamp to search behind
     """
     objs = {}
     uid = request.GET['uid']
     oid = request.GET['oid']
     token = request.GET['token']
     ts_query = request.GET['ts']
-    is_valid, objs["token"] = check_auth(uid, token, datetime.now())
+    if ts_query == "":
+        ts_query = timezone.now()
+    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
         objs["success"] = "false"
         objs["errmsg"] = "Invalid Token"
-        return JsonResponse(json.dumps(objs))
+        return JsonResponse(objs)
     objs["success"] = "true"
-    objs["messages"] = Messages.objects.filter(
-        Q(uid=uid, oid=oid, ts__lte=ts_query) |
-        Q(oid=uid, uid=oid, ts__lte=ts_query)).order_by('-ts')[:1000]
-    return JsonResponse(json.dumps(objs))
+    message_query_set = Messages.objects.filter(
+        Q(user_id=uid, other_id=oid) |
+        Q(other_id=uid, user_id=oid)).order_by('-created_at')[:1000]
+    print(message_query_set)
+    objs["messages"] = []
+    for message in message_query_set:
+        objs["messages"].append([str(message)])
+
+    LOGGER.info("Get Convo Result: %s", objs)
+    return JsonResponse(objs)
 
 def check_auth(uid, token, ts_check):
     """Utility function used for checking if the token is valid for a user
@@ -203,15 +216,16 @@ def check_auth(uid, token, ts_check):
             ts_check (timestamp): the ts of the time to check
     """
     if token is None:
-        token_row = TokenAuth.objects.filter(uid=uid).order_by("-created_at")[:1]
+        token_row = TokenAuth.objects.filter(user_id=uid).order_by("-created_at")[:1]
     else:
-        token_row = TokenAuth.objects.filter(uid=uid, token=token).order_by("-created_at")[:1]
+        token_row = TokenAuth.objects.filter(user_id=uid, token=token).order_by("-created_at")[:1]
 
-    if token_row is None:
+    if not token_row:
         return False, None
 
-    token_life = token_row[0].created_at+timedelta(hours=2)
-    if ts_check < token_life:
+    difference = ts_check - datetime.datetime.now()
+
+    if difference.days > 90:
         return False, token_row[0].token
     return True, token_row[0].token
 
@@ -224,17 +238,4 @@ def generate_new_token(uid):
     token = TokenAuth(user_id=uid, token=random_token)
     token.save()
     return random_token
-
-def check_generate_token(uid, token):
-    """Function to generate a new token if there isn't one
-        Args:
-            uid (string): a user's id
-            token (string): a token match
-    """
-    exist, token = check_auth(uid, token, datetime.now())
-    if not exist:
-        new_token = generate_new_token(uid)
-        print("User {} has expired token {} and is being given {}\n".format(uid, token, new_token))
-        return new_token
-    return token
     
