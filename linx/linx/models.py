@@ -14,7 +14,7 @@ class LUser(models.Model):
         info: any additonal information stored in JSON format
         created_at: the time the user was created
     """
-    uid = models.AutoField(primary_key=True)
+    user_id = models.AutoField(primary_key=True)
     username = models.CharField('username', max_length=50, unique=True)
     password = models.CharField('password', max_length=50)
     email = models.CharField('email', max_length=100)
@@ -25,7 +25,7 @@ class LUser(models.Model):
     def __str__(self):
         return '''UID: {}, Username: {}, Password: {}, Security Level: {},
          Info: {}, Created at: {}'''.format(
-             self.uid, self.username, self.password,
+             self.user_id, self.username, self.password,
              self.security_level, self.info, self.created_at)
 
     @classmethod

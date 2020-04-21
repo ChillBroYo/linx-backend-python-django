@@ -36,9 +36,9 @@ def sign_up(request):
                                   password=password, security_level=security_level,
                                   info=info)
 
-    objs["token"] = generate_new_token(new_user.uid)
+    objs["token"] = generate_new_token(new_user.user_id)
     objs["success"] = "true"
-    objs["uid"] = new_user.uid
+    objs["uid"] = new_user.user_id
 
     LOGGER.info("Sign Up Result: %s", json.dumps(str(objs)))
     return JsonResponse(objs)
@@ -95,13 +95,17 @@ def sign_in(request):
         objs["errmsg"] = "User doesn't exist"
         return JsonResponse(objs)
 
-    auth_user = TokenAuth.objects.filter(user_id=user[0].uid)
+    auth_user = TokenAuth.objects.filter(user_id=user[0].user_id)
     if not auth_user:
-        objs["token"] = str(TokenAuth.create_token_for_user(user.uid))
+        objs["token"] = str(TokenAuth.create_token_for_user(user.user_id))
     else:
         objs["token"] = str(auth_user[0].token)
 
-    objs["user"] = str(user[0])
+    objs["uid"] = user[0].user_id
+    objs["email"] = user[0].email
+    objs["username"] = user[0].username
+    objs["password"] = user[0].password
+    objs["info"] = str(user[0].info)
     LOGGER.info("Sign In Result: %s", objs)
     return JsonResponse(objs)
 
@@ -140,6 +144,7 @@ def update_profile(request):
             info: the user's possibly new info
     """
     uid = request.GET['uid']
+    email = request.GET['email']
     username = request.GET['username']
     password = request.GET['password']
     token = request.GET['token']
@@ -151,7 +156,8 @@ def update_profile(request):
         objs["errmsg"] = "Invalid Token"
         return JsonResponse(objs)
 
-    LUser.objects.filter(user_id=uid).update(username=username, password=password, info=info)
+    LUser.objects.filter(user_id=uid).update(email=email,
+                                             username=username, password=password, info=info)
     objs["success"] = "true"
 
     LOGGER.info("Update Profile Result: %s", objs)
@@ -171,10 +177,17 @@ def get_profile(request):
         objs["success"] = "false"
         objs["errmsg"] = "Invalid Token"
         return JsonResponse(objs)
-    user = LUser.objects.filter(user_id=uid)
+    users = LUser.objects.filter(user_id=uid)
+    user = users[0]
+    user_info = {}
+    user_info["uid"] = user.user_id
+    user_info["email"] = user.email
+    user_info["username"] = user.username
+    user_info["password"] = user.password
+    user_info["info"] = str(user.info)
 
-    LOGGER.info("Get Profile Result: %s", user[0])
-    return JsonResponse(user[0])
+    LOGGER.info("Get Profile Result: %s", user)
+    return JsonResponse(user_info)
 
 def get_convo(request):
     """Get the last 1000 message rows for a uid and another uid from a specified time
