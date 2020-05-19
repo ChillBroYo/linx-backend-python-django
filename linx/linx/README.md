@@ -12,6 +12,8 @@ In the directory with this readme run the following commands to setup the db:
 ---------------------------
 Run the server on port 8080 with:
 - python3 manage.py runserver 8080
+- (if you want to have access to this ip outside of your current server, or for production change the IP)
+  - python3 manage.py runserver 0.0.0.0:8080
 
 (3) Fill with Dummy data
 ------------------------
