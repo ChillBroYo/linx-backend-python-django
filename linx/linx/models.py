@@ -123,3 +123,30 @@ class TokenAuth(models.Model):
         token_obj = TokenAuth(user_id=uid, token=uuid.uuid4())
         token_obj.save()
         return token_obj
+
+class Images(models.Model):
+    """Images model for all image info (no images stored on the db)
+        iid: auto generated image identification number
+        user_id: the user_id that uploaded this image
+        link: the link to the s3 bucket storage location of the image
+        created_at: the time the image was uploaded
+    """
+    iid = models.AutoField(primary_key=True)
+    user_id = models.CharField('user_id', max_length=50)
+    link = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=now, editable=False)
+
+class Reactions(models.Model):
+    """Reactions model for all user reactions to specific images
+    Considered going with a string addition strategy to allow for easy searching and
+    computing but decided to go with basic solution for clarity and simplicity, may
+    need a better performance solution for finding `matches` in the future
+        rid: auto generated reaction idenitification number
+        user_id: the user that reacted to the image
+        iid: foreign key match to the Images table on image reacted to
+        reaction_type: the type of reaction the user gave
+    """
+    rid = models.AutoField(primary_key=True)
+    user_id = models.CharField('user_id', max_length=50)
+    iid = models.ForeignKey(Images, null=False, related_name="iid", on_delete=models.CASCADE)
+    reaction_type = models.CharField('reaction_type', max_length=128)

@@ -18,12 +18,12 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('messages/', views.get_messages, name='messages'),
-    path('get_convo/', views.get_convo, name='convo'),
-    path('add_message/', views.add_message, name='addMessage'),
-    path('sign_in/', views.sign_in, name='signin'),
-    path('sign_up/', views.sign_up, name='signup'),
-    path('get_profile/', views.get_profile, name='getprofile'),
-    path('update_profile/', views.update_profile, name='updateprofile'),
+    path(r'^admin/', admin.site.urls),
+    path(r'^messages/', views.get_messages, name='messages'),
+    path(r'^get_convo/', views.get_convo, name='convo'),
+    path(r'^add_message/', views.add_message, name='addMessage'),
+    path(r'^sign_in/', views.sign_in, name='signin'),
+    path(r'^sign_up/', views.sign_up, name='signup'),
+    path(r'^get_profile/', views.get_profile, name='getprofile'),
+    path(r'^update_profile/', views.update_profile, name='updateprofile'),
 ]

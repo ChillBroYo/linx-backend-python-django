@@ -8,10 +8,11 @@ from django.http import JsonResponse
 from django.utils import timezone
 from linx.models import LUser, Messages, TokenAuth
 
-
+# TODO make a get user info option, add user pictures to profile, add image link endpoint
 # Get Logger
 LOGGER = logging.getLogger('django')
 
+# DEV ENDPOINT /sign_up, PROD ENDPOINT /sign-up
 def sign_up(request):
     """User signup through app based sign up strategy
         Only adds a new user and if sucessful creates a new key and returns the new uid and token
@@ -43,6 +44,7 @@ def sign_up(request):
     LOGGER.info("Sign Up Result: %s", json.dumps(str(objs)))
     return JsonResponse(objs)
 
+# DEV ENDPOINT /get_messages, PROD ENDPOINT /get-messages
 def get_messages(request):
     """Gets a list of all the user profiles that a user has messaged
         Request Args:
@@ -77,6 +79,7 @@ def get_messages(request):
     LOGGER.info("Get Messages Result: %s", objs)
     return JsonResponse(objs)
 
+# DEV ENDPOINT /sign_in, PROD ENDPOINT /sign-in
 def sign_in(request):
     """Sign in request that with either authentiate and generate appropriate tokens or reject them
         Request Args:
@@ -109,6 +112,7 @@ def sign_in(request):
     LOGGER.info("Sign In Result: %s", objs)
     return JsonResponse(objs)
 
+# DEV ENDPOINT /add_message, PROD ENDPOINT /add-message
 def add_message(request):
     """Add a message to the message table
         Args:
@@ -134,6 +138,7 @@ def add_message(request):
     LOGGER.info("Add Message Result: %s", objs)
     return JsonResponse(objs)
 
+# DEV ENDPOINT /update_profile, PROD ENDPOINT /update_profile
 def update_profile(request):
     """Set the profile information for a user
         Args:
@@ -162,6 +167,7 @@ def update_profile(request):
 
     LOGGER.info("Update Profile Result: %s", objs)
     return JsonResponse(objs)
+
 
 def get_profile(request):
     """Get the profile information for a user
@@ -253,4 +259,6 @@ def generate_new_token(uid):
     token = TokenAuth(user_id=uid, token=random_token)
     token.save()
     return random_token
-    
+
+def get_image_link(image_id):
+    pass
