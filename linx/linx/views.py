@@ -214,9 +214,11 @@ def get_convo(request):
         Q(user_id=uid, other_id=oid) |
         Q(other_id=uid, user_id=oid)).order_by('-created_at')[:1000]
     print(message_query_set)
-    objs["messages"] = []
+    test_list = []
     for message in message_query_set:
-        objs["messages"].append([str(message)])
+        print(message.get_map())
+        test_list.append(message.get_map())
+    objs["messages"] = test_list
 
     LOGGER.info("Get Convo Result: %s", objs)
     return JsonResponse(objs)
