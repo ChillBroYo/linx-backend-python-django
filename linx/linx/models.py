@@ -2,6 +2,7 @@
 TBD IMPROVEMENTS: Create different table to "cache" a user's recent messages to people
 """
 import uuid
+import json
 from django.db import models
 from django.utils.timezone import now
 
@@ -21,6 +22,28 @@ class LUser(models.Model):
     security_level = models.CharField('security_level', max_length=50)
     info = models.TextField(blank=True)
     created_at = models.DateTimeField(default=now, editable=False)
+
+    def get_map(self):
+        """Return the object as a map"""
+        return_object = {}
+        return_object["user_id"] = self.user_id
+        return_object["username"] = self.username
+        return_object["email"] = self.email
+        return_object["security_level"] = self.security_level
+        return_object["info"] = self.info
+        return_object["created_at"] = self.created_at.__str__()
+        return return_object
+
+    def get_json(self):
+        """Return the object as formmatted json"""
+        return_object = {}
+        return_object["user_id"] = self.user_id
+        return_object["username"] = self.username
+        return_object["email"] = self.email
+        return_object["security_level"] = self.security_level
+        return_object["info"] = self.info
+        return_object["created_at"] = self.created_at.__str__()
+        return json.dumps(return_object)
 
     def __str__(self):
         return '''UID: {}, Username: {}, Password: {}, Security Level: {},
@@ -55,6 +78,26 @@ class Messages(models.Model):
     other_id = models.CharField('other_id', max_length=50)
     msg = models.CharField('msg', max_length=250)
     created_at = models.DateTimeField(default=now, editable=False)
+
+    def get_map(self):
+        """Return the object as a map"""
+        return_object = {}
+        return_object["message_id"] = self.mid
+        return_object["user_id"] = self.user_id
+        return_object["other_id"] = self.other_id
+        return_object["message"] = self.msg
+        return_object["created_at"] = self.created_at.__str__()
+        return return_object
+
+    def get_json(self):
+        """Return the object as formatted json"""
+        return_object = {}
+        return_object["message_id"] = self.mid
+        return_object["user_id"] = self.user_id
+        return_object["other_id"] = self.other_id
+        return_object["message"] = self.msg
+        return_object["created_at"] = self.created_at.__str__()
+        return json.dumps(return_object)
 
     def __str__(self):
         return '''MID: {}, UID: {}, OID: {}, msg: {}, created_at: {}'''.format(
