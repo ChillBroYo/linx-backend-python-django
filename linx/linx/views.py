@@ -20,11 +20,13 @@ def sign_up(request):
             email (string): the user's email
             username (string): the user's username
             password (string): the user's password
+            profile_picture (string): the link to the user's profile picture if desired
             info (json): any additonal information stored in JSON format
     """
     email = request.GET['email']
     username = request.GET['username']
     password = request.GET['password']
+    profile_picture = request.GET["profile_picture"]
     security_level = request.GET['security_level']
     info = request.GET['info']
     user = LUser.objects.filter(username=username)
@@ -33,9 +35,9 @@ def sign_up(request):
         return JsonResponse(objs)
 
     objs = {}
-    new_user = LUser.create_luser(username=username, email=email,
-                                  password=password, security_level=security_level,
-                                  info=info)
+    new_user = LUser.create_luser(username=username, email=email, profile_picture=profile_picture,
+                                  image_index=0, images_visited="[]", password=password,
+                                  security_level=security_level, info=info)
 
     objs["token"] = generate_new_token(new_user.user_id)
     objs["success"] = "true"
@@ -173,24 +175,21 @@ def get_profile(request):
     """Get the profile information for a user
         Args:
             uid: the user who sent the message's id
-            token: a potentially valid token to use
+            key: a key that prevents just anyone from hitting this endpoint, default 123
+        NOTE: Allowing any user to get this info with a known secret 
+        (to be in the future made to each new app's app id)
     """
     uid = request.GET['uid']
-    token = request.GET['token']
-    objs = {}
-    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
-    if not is_valid:
+    key = request.GET['key']
+    if key != "123":
+        objs = {}
         objs["success"] = "false"
         objs["errmsg"] = "Invalid Token"
         return JsonResponse(objs)
+
     users = LUser.objects.filter(user_id=uid)
     user = users[0]
-    user_info = {}
-    user_info["uid"] = user.user_id
-    user_info["email"] = user.email
-    user_info["username"] = user.username
-    user_info["password"] = user.password
-    user_info["info"] = str(user.info)
+    user_info = user.get_map()
 
     LOGGER.info("Get Profile Result: %s", user)
     return JsonResponse(user_info)
@@ -202,12 +201,18 @@ def get_convo(request):
             oid (string): the other user's id
             token (string): a user's token for auth
             ts: timestamp to search behind
+            limit: the limit of messages to search for
     """
     objs = {}
     uid = request.GET['uid']
     oid = request.GET['oid']
     token = request.GET['token']
     ts_query = request.GET['ts']
+    limit = request.GET['limit']
+    if limit == "":
+        limit = 1000
+    else:
+        limit = int(limit)
     if ts_query == "":
         ts_query = timezone.now()
     is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
@@ -218,8 +223,7 @@ def get_convo(request):
     objs["success"] = "true"
     message_query_set = Messages.objects.filter(
         Q(user_id=uid, other_id=oid) |
-        Q(other_id=uid, user_id=oid)).order_by('-created_at')[:1000]
-    print(message_query_set)
+        Q(other_id=uid, user_id=oid)).order_by('-created_at')[:limit]
     test_list = []
     for message in message_query_set:
         print(message.get_map())

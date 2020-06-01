@@ -11,6 +11,11 @@ class LUser(models.Model):
         uid: auto generated user idenitification number
         username: user defined name that must also be unique
         password: user defined password encrypted by argon2
+        email: user email address
+        profile_picture: the user's optionally uploaded profile picture link
+        image_index: the user's current image index location
+        images_visited: a list of integers referring to the id's of images the user has visited
+        friends: a map of user_ids to the timestamp when the friendship was made
         security_level: the security level of the user
         info: any additonal information stored in JSON format
         created_at: the time the user was created
@@ -18,9 +23,13 @@ class LUser(models.Model):
     user_id = models.AutoField(primary_key=True)
     username = models.CharField('username', max_length=50, unique=True)
     password = models.CharField('password', max_length=50)
+    profile_picture = models.TextField(blank=True)
     email = models.CharField('email', max_length=100)
     security_level = models.CharField('security_level', max_length=50)
     info = models.TextField(blank=True)
+    image_index = models.IntegerField(auto_created=False)
+    images_visited = models.TextField(blank=True)
+    friends = models.TextField(blank=True)
     created_at = models.DateTimeField(default=now, editable=False)
 
     def get_map(self):
@@ -29,6 +38,10 @@ class LUser(models.Model):
         return_object["user_id"] = self.user_id
         return_object["username"] = self.username
         return_object["email"] = self.email
+        return_object["profile_picture"] = self.profile_picture
+        return_object["image_index"] = self.image_index
+        return_object["images_visited"] = self.images_visited
+        return_object["friends"] = self.friends
         return_object["security_level"] = self.security_level
         return_object["info"] = self.info
         return_object["created_at"] = self.created_at.__str__()
@@ -40,6 +53,10 @@ class LUser(models.Model):
         return_object["user_id"] = self.user_id
         return_object["username"] = self.username
         return_object["email"] = self.email
+        return_object["profile_picture"] = self.profile_picture
+        return_object["image_index"] = self.image_index
+        return_object["images_visited"] = self.images_visited
+        return_object["friends"] = self.friends
         return_object["security_level"] = self.security_level
         return_object["info"] = self.info
         return_object["created_at"] = self.created_at.__str__()
@@ -52,15 +69,23 @@ class LUser(models.Model):
              self.security_level, self.info, self.created_at)
 
     @classmethod
-    def create_luser(cls, username, password, email, security_level, info) -> object:
+    def create_luser(cls, username, password, email,
+                     profile_picture, image_index, images_visited,
+                     friends, security_level, info) -> object:
         """Creates a User object, saves it to the db and returns a copy of the object back
-            username: user defined name that must also be unique
+             username: user defined name that must also be unique
             password: user defined password encrypted by argon2
+            email: user email address
+            profile_picture: the user's optionally uploaded profile picture link
+            image_index: the user's current image index location
+            images_visited: a list of integers referring to the id's of images the user has visited
+            friends: a map of user_ids to the timestamp when the friendship was made
             security_level: the security level of the user
             info: any additonal information stored in JSON format
         """
-        new_user = LUser(username=username,
-                         password=password, email=email,
+        new_user = LUser(username=username, password=password, email=email,
+                         profile_picture=profile_picture, image_index=image_index,
+                         images_visited=images_visited, friends=friends,
                          security_level=security_level, info=info)
         new_user.save()
         return new_user
@@ -129,10 +154,14 @@ class Images(models.Model):
         iid: auto generated image identification number
         user_id: the user_id that uploaded this image
         link: the link to the s3 bucket storage location of the image
+        image_index: the image's index to be displayed, only images to display will have indexes
+        image_type: the type of image uploaded
         created_at: the time the image was uploaded
     """
     iid = models.AutoField(primary_key=True)
     user_id = models.CharField('user_id', max_length=50)
+    image_index = models.IntegerField(null=True)
+    image_type = models.CharField('image_type', max_length=50)
     link = models.TextField(blank=True)
     created_at = models.DateTimeField(default=now, editable=False)
 
