@@ -3,10 +3,11 @@ import uuid
 import json
 import logging
 import datetime
+import boto3
 from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
-from linx.models import LUser, Messages, TokenAuth
+from linx.models import LUser, Messages, TokenAuth, Images
 
 # TODO make a get user info option, add user pictures to profile, add image link endpoint
 # Get Logger
@@ -176,7 +177,7 @@ def get_profile(request):
         Args:
             uid: the user who sent the message's id
             key: a key that prevents just anyone from hitting this endpoint, default 123
-        NOTE: Allowing any user to get this info with a known secret 
+        NOTE: Allowing any user to get this info with a known secret
         (to be in the future made to each new app's app id)
     """
     uid = request.GET['uid']
@@ -226,7 +227,6 @@ def get_convo(request):
         Q(other_id=uid, user_id=oid)).order_by('-created_at')[:limit]
     test_list = []
     for message in message_query_set:
-        print(message.get_map())
         test_list.append(message.get_map())
     objs["messages"] = test_list
 
@@ -264,5 +264,60 @@ def generate_new_token(uid):
     token.save()
     return random_token
 
-def get_image_link(image_id):
-    pass
+def get_image(request):
+    """Function to get the s3 image link
+        Args:
+            image_id (int): the id to look up
+            image_type (string): the type of image to look up
+    """
+    image_type = request.GET['image_type']
+    image_id = request.GET['image_id']
+
+    # General images are stored as g1, g2, g3 and so on, general images also have an index that can be incremented through
+    # Profile pictures are stored as p1, p2, p3 and so on
+    prefix = ""
+    if image_type == "general":
+        prefix = "g"
+    elif image_type == "profile":
+        prefix = "p"
+    elif image_type == "reference":
+        prefix = "reference/"
+    
+    bucketname = 'linx-images' # replace with your bucket name
+    filename = prefix + image_id # replace with your object key
+    objs = {}
+    objs["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format(bucketname, filename)
+    return JsonResponse(objs)
+
+def save_image(request):
+    """Function to save images to s3 and be recorded in the db
+        Args:
+            image (file): image to upload
+            image_type (string): the type of image
+            user_id (string): the user id who is trying to upload this image
+    """
+    objs = {}
+    image = request.data['image']
+    image_type = request.POST['image_type']
+    user_id = request.POST['user_id']
+    prefix = ""
+    if image_type == "general":
+        prefix = "g"
+    elif image_type == "profile":
+        prefix = "p"
+    elif image_type == "reference":
+        prefix = "reference/"
+
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket('linx-images')
+    file_id = 0
+    image_query_set = Images.objects.filter(
+        Q(image_type=image_type)).order_by('-created_at')[:-1]
+
+    #TODO need to actually save in db and s3, neither done
+    if len(image_query_set) != 0:
+        file_id = image_query_set
+
+    filename = "{}{}".format(prefix, file_id)
+    bucket.put_object(Key=filename, Body=image)
+

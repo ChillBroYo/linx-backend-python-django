@@ -177,5 +177,5 @@ class Reactions(models.Model):
     """
     rid = models.AutoField(primary_key=True)
     user_id = models.CharField('user_id', max_length=50)
-    iid = models.ForeignKey(Images, null=False, related_name="iid", on_delete=models.CASCADE)
+    iid = models.IntegerField(null=False)
     reaction_type = models.CharField('reaction_type', max_length=128)
