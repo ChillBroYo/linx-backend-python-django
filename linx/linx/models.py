@@ -174,8 +174,10 @@ class Reactions(models.Model):
         user_id: the user that reacted to the image
         iid: foreign key match to the Images table on image reacted to
         reaction_type: the type of reaction the user gave
+        created_at: the time the reaction was marked
     """
     rid = models.AutoField(primary_key=True)
     user_id = models.CharField('user_id', max_length=50)
     iid = models.IntegerField(null=False)
     reaction_type = models.CharField('reaction_type', max_length=128)
+    created_at = models.DateTimeField(default=now, editable=False)

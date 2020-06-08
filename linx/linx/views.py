@@ -7,9 +7,8 @@ import boto3
 from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
-from linx.models import LUser, Messages, TokenAuth, Images
+from linx.models import LUser, Messages, TokenAuth, Images, Reactions
 
-# TODO make a get user info option, add user pictures to profile, add image link endpoint
 # Get Logger
 LOGGER = logging.getLogger('django')
 
@@ -37,7 +36,7 @@ def sign_up(request):
 
     objs = {}
     new_user = LUser.create_luser(username=username, email=email, profile_picture=profile_picture,
-                                  image_index=0, images_visited="[]", password=password,
+                                  image_index=0, images_visited="[]", password=password, friends="[]",
                                   security_level=security_level, info=info)
 
     objs["token"] = generate_new_token(new_user.user_id)
@@ -283,10 +282,12 @@ def get_image(request):
     elif image_type == "reference":
         prefix = "reference/"
     
-    bucketname = 'linx-images' # replace with your bucket name
-    filename = prefix + image_id # replace with your object key
+    bucketname = 'linx-images' # bucket name
+    filename = prefix + image_id # object key
     objs = {}
     objs["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format(bucketname, filename)
+
+    LOGGER.info("Get Image Result: %s", objs)
     return JsonResponse(objs)
 
 def save_image(request):
@@ -314,10 +315,44 @@ def save_image(request):
     image_query_set = Images.objects.filter(
         Q(image_type=image_type)).order_by('-created_at')[:-1]
 
-    #TODO need to actually save in db and s3, neither done
-    if len(image_query_set) != 0:
-        file_id = image_query_set
+    #TODO need to actually save in db, neither done
+    file_index = -1
+    if image_query_set:
+        file_index = image_query_set[0].image_index
+    else:
+        objs["success"] = "false"
+        objs["errmsg"] = "no images currently exist"
+        return JsonResponse(objs)
 
-    filename = "{}{}".format(prefix, file_id)
+    filename = "{}{}".format(prefix, file_index)
+
+    objs = {}
+    objs["success"] = "true"
+    objs["image_type"] = image_type
+    objs["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format("linx-images", filename)
+    image = Images(None, user_id, image_type, objs["image_url"])
+    image.save()
+
     bucket.put_object(Key=filename, Body=image)
+    
+    return JsonResponse(objs)
 
+def react_to_image(request):
+    """Function to save images to s3 and be recorded in the db
+        Args:
+            uid (int): user's id
+            token: a potentially valid token to use
+            image_id (int): the image that is being reacted to's id
+            reaction_type (string): the reaction placed upon the image
+    """
+    objs = {}
+    uid = request.GET['uid']
+    token = request.GET['token']
+    image_id = request.GET['image_id']
+    reaction_type = request.GET['reaction_type']
+
+    # In this way, it is possible for a user to react the same way to the same image with the same id
+    reaction = Reactions(None, uid, image_id, reaction_type)
+    reaction.save()
+    objs["success"] = "true"
+    return JsonResponse(objs)
