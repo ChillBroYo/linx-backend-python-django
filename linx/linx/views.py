@@ -1,71 +1,192 @@
 """Webcall views dealing with all backend functionality"""
 import uuid
-import json
 import logging
 import datetime
 import boto3
 from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from linx.models import LUser, Messages, TokenAuth, Images, Reactions
 
 # Get Logger
 LOGGER = logging.getLogger('django')
 
+# Unique Contraint on username and email field
 # DEV ENDPOINT /sign_up, PROD ENDPOINT /sign-up
+@csrf_exempt
 def sign_up(request):
     """User signup through app based sign up strategy
         Only adds a new user and if sucessful creates a new key and returns the new uid and token
-        Request Args:
+        POST Request Body Args:
             email (string): the user's email
             username (string): the user's username
             password (string): the user's password
             profile_picture (string): the link to the user's profile picture if desired
+            security_level (string): the users security level, this should only be `user` for now
             info (json): any additonal information stored in JSON format
     """
-    email = request.GET['email']
-    username = request.GET['username']
-    password = request.GET['password']
-    profile_picture = request.GET["profile_picture"]
-    security_level = request.GET['security_level']
-    info = request.GET['info']
+    collected_values = {}
+
+    # Only accept POST requests for this endpoint
+    if request.method != 'POST':
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    # Extract Body Params
+    email = request.POST['email']
+    username = request.POST['username']
+    password = request.POST['password']
+    profile_picture = request.POST["profile_picture"]
+    security_level = request.POST['security_level']
+    info = request.POST['info']
+
+    # Check if user with the same username already exists
     user = LUser.objects.filter(username=username)
     if user:
-        objs = {"success": "false", "errmsg": "Username Already Exists"}
-        return JsonResponse(objs)
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Username Already Exists"
+        return JsonResponse(collected_values, status=400)
 
-    objs = {}
+    # Check if user with the same email exists
+    user = LUser.objects.filter(email=email)
+    if user:
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Email Already Exists"
+        return JsonResponse(collected_values, status=400)
+
+    # Create the user, with no images visited or friends
     new_user = LUser.create_luser(username=username, email=email, profile_picture=profile_picture,
-                                  image_index=0, images_visited="[]", password=password, friends="[]",
-                                  security_level=security_level, info=info)
+                                  image_index=0, images_visited="[]", password=password,
+                                  friends="[]", security_level=security_level, info=info)
 
-    objs["token"] = generate_new_token(new_user.user_id)
-    objs["success"] = "true"
-    objs["uid"] = new_user.user_id
+    # Create new token for user in TokenAuth db
+    collected_values["token"] = generate_new_token(new_user.user_id)
 
-    LOGGER.info("Sign Up Result: %s", json.dumps(str(objs)))
-    return JsonResponse(objs)
+    # Store additional values for return message
+    collected_values["success"] = "true"
+    collected_values["uid"] = new_user.user_id
+
+    LOGGER.info("Sign Up Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
+
+# DEV ENDPOINT /sign_in, PROD ENDPOINT /sign-in
+@csrf_exempt
+def sign_in(request):
+    """Sign in request that with either authentiate and acquire appropriate tokens or reject them
+        GET Request Args:
+            username: the user's username
+            password: the user's password
+    """
+    collected_values = {}
+
+    # Only accept GET requests for this endpoint
+    if request.method != 'GET':
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    # Extract params
+    username = request.GET['username']
+    password = request.GET['password']
+
+    # Check if user exists
+    user = LUser.objects.filter(username=username, password=password)
+    if not user:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "User doesn't exist"
+        return JsonResponse(collected_values, status=400)
+
+    # Get the token of the user and store it
+    auth_user = TokenAuth.objects.filter(user_id=user[0].user_id)
+    collected_values["token"] = auth_user[0].token
+
+    # Collect remaining values
+    collected_values["uid"] = user[0].user_id
+    collected_values["email"] = user[0].email
+    collected_values["username"] = user[0].username
+    collected_values["password"] = user[0].password
+    collected_values["info"] = str(user[0].info)
+    collected_values["success"] = True
+
+    LOGGER.info("Sign In Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
+
+# DEV ENDPOINT /add_message, PROD ENDPOINT /add-message
+@csrf_exempt
+def add_message(request):
+    """Add a message to the message table
+        Args:
+            uid: the user who sent the message's id
+            oid: the user who is recieving the message's id
+            token: a potentially valid token to use of the uid
+            msg: the message to send
+    """
+    collected_values = {}
+
+    # Only accept POST requests for this endpoint
+    if request.method != 'POST':
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    # Extract params
+    uid = request.POST['uid']
+    oid = request.POST['oid']
+    token = request.POST['token']
+    msg = request.POST['msg']
+
+    # Check if token is valid, if not, return an error
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    if not is_valid:
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+
+    # Create a message, do not specify the message id and store
+    message = Messages(None, uid, oid, msg)
+    message.save()
+    collected_values["success"] = "true"
+
+    LOGGER.info("Add Message Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
 
 # DEV ENDPOINT /get_messages, PROD ENDPOINT /get-messages
-def get_messages(request):
+@csrf_exempt
+def get_conversation_list(request):
     """Gets a list of all the user profiles that a user has messaged
         Request Args:
         uid: the user's id
         token (string): a user's token for auth
+        limit (int): the number of users to limit coming back
     """
+    collected_values = {}
+
+    # Only accept GET requests for this endpoint
+    if request.method != 'GET':
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    # Extract params
     uid = request.GET['uid']
     token = request.GET['token']
-    objs = {}
-    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
+    limit = int(request.GET['limit']) # Force a limiter to see how many users to get
+
+    # Check if the token is valid
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
-        objs["success"] = "false"
-        objs["errmsg"] = "Invalid Token"
-        return JsonResponse(objs)
-    objs["success"] = "true"
-    users = {}
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+
     # Maybe cache or find better way of getting most recent id's messaged
-    msg_sent = Messages.objects.filter(user_id=uid).order_by('-created_at')[:1000]
-    msg_recieved = Messages.objects.filter(other_id=uid).order_by('-created_at')[:1000]
+    # Do a walkthrough of all messages and count totals
+    # Potential Improvement is to keep a mapping of all messages sent from users to users
+    users = {}
+    msg_sent = Messages.objects.filter(user_id=uid).order_by('-created_at')[:limit]
+    msg_recieved = Messages.objects.filter(other_id=uid).order_by('-created_at')[:limit]
     for msg in msg_sent:
         if users.get(msg.other_id) is None:
             users[msg.other_id] = 1
@@ -76,69 +197,66 @@ def get_messages(request):
             users[msg.user_id] = 1
         else:
             users[msg.user_id] += 1
-    objs["users"] = users
+    
+    # Collect return values
+    collected_values["users"] = users
+    collected_values["success"] = "true"
 
-    LOGGER.info("Get Messages Result: %s", objs)
-    return JsonResponse(objs)
+    LOGGER.info("Get Conversation List Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
 
-# DEV ENDPOINT /sign_in, PROD ENDPOINT /sign-in
-def sign_in(request):
-    """Sign in request that with either authentiate and generate appropriate tokens or reject them
-        Request Args:
-        username: the user's username
-        password: the user's password
-    """
-    username = request.GET['username']
-    password = request.GET['password']
-
-    objs = {}
-    objs["success"] = True
-    user = LUser.objects.filter(username=username, password=password)
-    if not user:
-        objs = {}
-        objs["success"] = False
-        objs["errmsg"] = "User doesn't exist"
-        return JsonResponse(objs)
-
-    auth_user = TokenAuth.objects.filter(user_id=user[0].user_id)
-    if not auth_user:
-        objs["token"] = str(TokenAuth.create_token_for_user(user.user_id))
-    else:
-        objs["token"] = str(auth_user[0].token)
-
-    objs["uid"] = user[0].user_id
-    objs["email"] = user[0].email
-    objs["username"] = user[0].username
-    objs["password"] = user[0].password
-    objs["info"] = str(user[0].info)
-    LOGGER.info("Sign In Result: %s", objs)
-    return JsonResponse(objs)
-
-# DEV ENDPOINT /add_message, PROD ENDPOINT /add-message
-def add_message(request):
-    """Add a message to the message table
+# DEV ENDPOINT /get_conversation, PROD ENDPOINT /get-conversation
+@csrf_exempt
+def get_conversation(request):
+    """Get the last 1000 message rows for a uid and another uid from a specified time
         Args:
-            uid: the user who sent the message's id
-            oid: the user who is recieving the message's id
-            token: a potentially valid token to use
-            msg: the message to send
+            uid (string): a user's id
+            oid (string): the other user's id
+            token (string): a user's token for auth
+            ts: timestamp to search behind
+            limit: the limit of messages to search for
     """
+    collected_values = {}
+
+    # Only allow GET requests for this endpoint
+    if request.method != 'GET':
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    # Extract and form params
     uid = request.GET['uid']
     oid = request.GET['oid']
     token = request.GET['token']
-    msg = request.GET['msg']
-    objs = {}
-    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
-    if not is_valid:
-        objs["success"] = "false"
-        objs["errmsg"] = "Invalid Token"
-        return JsonResponse(objs)
-    message = Messages(None, uid, oid, msg)
-    message.save()
-    objs["success"] = "true"
+    ts_query = request.GET['ts']
+    limit = int(request.GET['limit'])
 
-    LOGGER.info("Add Message Result: %s", objs)
-    return JsonResponse(objs)
+    if ts_query == "":
+        ts_query = timezone.now()
+
+    # Check if token is valid
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    if not is_valid:
+        collected_values["success"] = "false"
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+
+    # Collect all messages sent by two users in question listed by created at time
+    message_query_set = Messages.objects.filter(
+        Q(user_id=uid, other_id=oid) |
+        Q(other_id=uid, user_id=oid)).order_by('-created_at')[:limit]
+    
+    # Collect all messages from query
+    test_list = []
+    for message in message_query_set:
+        test_list.append(message.get_map())
+
+    # Collect return values
+    collected_values["messages"] = test_list
+    collected_values["success"] = True
+
+    LOGGER.info("Get Conversation Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
 
 # DEV ENDPOINT /update_profile, PROD ENDPOINT /update_profile
 def update_profile(request):
@@ -150,13 +268,18 @@ def update_profile(request):
             token: a potentially valid token to use
             info: the user's possibly new info
     """
+    objs = {}
+    if request.method != 'POST':
+        objs["success"] = "false"
+        objs["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(objs)
+
     uid = request.GET['uid']
     email = request.GET['email']
     username = request.GET['username']
     password = request.GET['password']
     token = request.GET['token']
     info = request.GET['info']
-    objs = {}
     is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
         objs["success"] = "false"
@@ -179,6 +302,11 @@ def get_profile(request):
         NOTE: Allowing any user to get this info with a known secret
         (to be in the future made to each new app's app id)
     """
+    objs = {}
+    if request.method != 'GET':
+        objs["success"] = "false"
+        objs["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(objs)
     uid = request.GET['uid']
     key = request.GET['key']
     if key != "123":
@@ -193,44 +321,6 @@ def get_profile(request):
 
     LOGGER.info("Get Profile Result: %s", user)
     return JsonResponse(user_info)
-
-def get_convo(request):
-    """Get the last 1000 message rows for a uid and another uid from a specified time
-        Args:
-            uid (string): a user's id
-            oid (string): the other user's id
-            token (string): a user's token for auth
-            ts: timestamp to search behind
-            limit: the limit of messages to search for
-    """
-    objs = {}
-    uid = request.GET['uid']
-    oid = request.GET['oid']
-    token = request.GET['token']
-    ts_query = request.GET['ts']
-    limit = request.GET['limit']
-    if limit == "":
-        limit = 1000
-    else:
-        limit = int(limit)
-    if ts_query == "":
-        ts_query = timezone.now()
-    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
-    if not is_valid:
-        objs["success"] = "false"
-        objs["errmsg"] = "Invalid Token"
-        return JsonResponse(objs)
-    objs["success"] = "true"
-    message_query_set = Messages.objects.filter(
-        Q(user_id=uid, other_id=oid) |
-        Q(other_id=uid, user_id=oid)).order_by('-created_at')[:limit]
-    test_list = []
-    for message in message_query_set:
-        test_list.append(message.get_map())
-    objs["messages"] = test_list
-
-    LOGGER.info("Get Convo Result: %s", objs)
-    return JsonResponse(objs)
 
 def check_auth(uid, token, ts_check):
     """Utility function used for checking if the token is valid for a user
@@ -269,10 +359,16 @@ def get_image(request):
             image_id (int): the id to look up
             image_type (string): the type of image to look up
     """
+    objs = {}
+    if request.method != 'GET':
+        objs["success"] = "false"
+        objs["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(objs)
     image_type = request.GET['image_type']
     image_id = request.GET['image_id']
 
-    # General images are stored as g1, g2, g3 and so on, general images also have an index that can be incremented through
+    # General images are stored as g1, g2, g3 and so on, general
+    # images also have an index that can be incremented through
     # Profile pictures are stored as p1, p2, p3 and so on
     prefix = ""
     if image_type == "general":
@@ -281,10 +377,9 @@ def get_image(request):
         prefix = "p"
     elif image_type == "reference":
         prefix = "reference/"
-    
+
     bucketname = 'linx-images' # bucket name
     filename = prefix + image_id # object key
-    objs = {}
     objs["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format(bucketname, filename)
 
     LOGGER.info("Get Image Result: %s", objs)
@@ -298,6 +393,10 @@ def save_image(request):
             user_id (string): the user id who is trying to upload this image
     """
     objs = {}
+    if request.method != 'POST':
+        objs["success"] = "false"
+        objs["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(objs)
     image = request.data['image']
     image_type = request.POST['image_type']
     user_id = request.POST['user_id']
@@ -315,7 +414,6 @@ def save_image(request):
     image_query_set = Images.objects.filter(
         Q(image_type=image_type)).order_by('-created_at')[:-1]
 
-    #TODO need to actually save in db, neither done
     file_index = -1
     if image_query_set:
         file_index = image_query_set[0].image_index
@@ -334,25 +432,31 @@ def save_image(request):
     image.save()
 
     bucket.put_object(Key=filename, Body=image)
-    
+
     return JsonResponse(objs)
 
 def react_to_image(request):
     """Function to save images to s3 and be recorded in the db
         Args:
             uid (int): user's id
-            token: a potentially valid token to use
             image_id (int): the image that is being reacted to's id
             reaction_type (string): the reaction placed upon the image
     """
     objs = {}
+    if request.method != 'POST':
+        objs["success"] = "false"
+        objs["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(objs)
     uid = request.GET['uid']
-    token = request.GET['token']
     image_id = request.GET['image_id']
     reaction_type = request.GET['reaction_type']
 
-    # In this way, it is possible for a user to react the same way to the same image with the same id
+    # In this way, it is possible for a user to react the same way to the same
+    # image with the same id
     reaction = Reactions(None, uid, image_id, reaction_type)
     reaction.save()
     objs["success"] = "true"
     return JsonResponse(objs)
+
+def add_friend(request):
+    pass
