@@ -12,6 +12,9 @@ from linx.models import LUser, Messages, TokenAuth, Images, Reactions
 # Get Logger
 LOGGER = logging.getLogger('django')
 
+# Debug param to prevent bad s3 requests
+DEV = True
+
 # Unique Contraint on username and email field
 # DEV ENDPOINT /sign_up, PROD ENDPOINT /sign-up
 @csrf_exempt
@@ -30,7 +33,7 @@ def sign_up(request):
 
     # Only accept POST requests for this endpoint
     if request.method != 'POST':
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Wrong HTTP verb"
         return JsonResponse(collected_values, status=400)
 
@@ -45,14 +48,14 @@ def sign_up(request):
     # Check if user with the same username already exists
     user = LUser.objects.filter(username=username)
     if user:
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Username Already Exists"
         return JsonResponse(collected_values, status=400)
 
     # Check if user with the same email exists
     user = LUser.objects.filter(email=email)
     if user:
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Email Already Exists"
         return JsonResponse(collected_values, status=400)
 
@@ -65,7 +68,7 @@ def sign_up(request):
     collected_values["token"] = generate_new_token(new_user.user_id)
 
     # Store additional values for return message
-    collected_values["success"] = "true"
+    collected_values["success"] = True
     collected_values["uid"] = new_user.user_id
 
     LOGGER.info("Sign Up Result: %s", collected_values)
@@ -83,7 +86,7 @@ def sign_in(request):
 
     # Only accept GET requests for this endpoint
     if request.method != 'GET':
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Wrong HTTP verb"
         return JsonResponse(collected_values, status=400)
 
@@ -127,7 +130,7 @@ def add_message(request):
 
     # Only accept POST requests for this endpoint
     if request.method != 'POST':
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Wrong HTTP verb"
         return JsonResponse(collected_values, status=400)
 
@@ -140,14 +143,14 @@ def add_message(request):
     # Check if token is valid, if not, return an error
     is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
         return JsonResponse(collected_values, status=400)
 
     # Create a message, do not specify the message id and store
     message = Messages(None, uid, oid, msg)
     message.save()
-    collected_values["success"] = "true"
+    collected_values["success"] = True
 
     LOGGER.info("Add Message Result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
@@ -165,7 +168,7 @@ def get_conversation_list(request):
 
     # Only accept GET requests for this endpoint
     if request.method != 'GET':
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Wrong HTTP verb"
         return JsonResponse(collected_values, status=400)
 
@@ -177,7 +180,7 @@ def get_conversation_list(request):
     # Check if the token is valid
     is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
         return JsonResponse(collected_values, status=400)
 
@@ -197,10 +200,10 @@ def get_conversation_list(request):
             users[msg.user_id] = 1
         else:
             users[msg.user_id] += 1
-    
+
     # Collect return values
     collected_values["users"] = users
-    collected_values["success"] = "true"
+    collected_values["success"] = True
 
     LOGGER.info("Get Conversation List Result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
@@ -220,7 +223,7 @@ def get_conversation(request):
 
     # Only allow GET requests for this endpoint
     if request.method != 'GET':
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Wrong HTTP verb"
         return JsonResponse(collected_values, status=400)
 
@@ -237,7 +240,7 @@ def get_conversation(request):
     # Check if token is valid
     is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
-        collected_values["success"] = "false"
+        collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
         return JsonResponse(collected_values, status=400)
 
@@ -245,7 +248,7 @@ def get_conversation(request):
     message_query_set = Messages.objects.filter(
         Q(user_id=uid, other_id=oid) |
         Q(other_id=uid, user_id=oid)).order_by('-created_at')[:limit]
-    
+
     # Collect all messages from query
     test_list = []
     for message in message_query_set:
@@ -258,42 +261,66 @@ def get_conversation(request):
     LOGGER.info("Get Conversation Result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
 
-# DEV ENDPOINT /update_profile, PROD ENDPOINT /update_profile
+# DEV ENDPOINT /update_profile, PROD ENDPOINT /update-profile
+@csrf_exempt
 def update_profile(request):
     """Set the profile information for a user
         Args:
             uid: the user who sent the message's id
             username: the possibly new username for user
             password: the possibly new password for user
+            email: the users possibly new email
+            profile_picture: the users possibly new
+            image_index: the user's image index they are currently at
+            images_visited: the images that have been visited by the user by image id,
+            friends: the friends that have been made by the user,
+            security_level: the security level of the user, should only be user,
             token: a potentially valid token to use
             info: the user's possibly new info
     """
-    objs = {}
+    collected_values = {}
+
+    # Only allow POST requests with this endpoint
     if request.method != 'POST':
-        objs["success"] = "false"
-        objs["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(objs)
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
 
-    uid = request.GET['uid']
-    email = request.GET['email']
-    username = request.GET['username']
-    password = request.GET['password']
-    token = request.GET['token']
-    info = request.GET['info']
-    is_valid, objs["token"] = check_auth(uid, token, datetime.datetime.now())
+    # Extract params
+    uid = request.POST['user_id']
+    username = request.POST['username']
+    password = request.POST['password']
+    email = request.POST['email']
+    profile_picture = request.POST['profile_picture']
+    image_index = request.POST['image_index']
+    image_visited = request.POST['images_visited']
+    friends = request.POST['friends']
+    security_level = request.POST['security_level']
+    token = request.POST['token']
+    info = request.POST['info']
+
+    # Check auth
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
     if not is_valid:
-        objs["success"] = "false"
-        objs["errmsg"] = "Invalid Token"
-        return JsonResponse(objs)
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
 
-    LUser.objects.filter(user_id=uid).update(email=email,
-                                             username=username, password=password, info=info)
-    objs["success"] = "true"
+    # Update user record
+    LUser.objects.filter(user_id=uid).update(username=username, password=password, email=email,
+                                             profile_picture=profile_picture,
+                                             image_index=image_index, images_visited=image_visited,
+                                             friends=friends, security_level=security_level,
+                                             info=info)
 
-    LOGGER.info("Update Profile Result: %s", objs)
-    return JsonResponse(objs)
+    # Collect Return values
+    collected_values["success"] = True
 
+    LOGGER.info("Update Profile Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
 
+# DEV ENDPOINT /get_profile, PROD ENDPOINT /get-profile
+@csrf_exempt
 def get_profile(request):
     """Get the profile information for a user
         Args:
@@ -302,25 +329,34 @@ def get_profile(request):
         NOTE: Allowing any user to get this info with a known secret
         (to be in the future made to each new app's app id)
     """
-    objs = {}
+    collected_values = {}
+
+    # Only allow GET requests on this endpoint
     if request.method != 'GET':
-        objs["success"] = "false"
-        objs["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(objs)
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    # Extract params
     uid = request.GET['uid']
     key = request.GET['key']
-    if key != "123":
-        objs = {}
-        objs["success"] = "false"
-        objs["errmsg"] = "Invalid Token"
-        return JsonResponse(objs)
 
+    # Hardcoded key for security
+    if key != "123":
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Key"
+        return JsonResponse(collected_values, status=400)
+
+    # Grab the user's profile information
     users = LUser.objects.filter(user_id=uid)
     user = users[0]
-    user_info = user.get_map()
+
+    # Collect values
+    collected_values["user_info"] = user.get_map()
+    collected_values["success"] = True
 
     LOGGER.info("Get Profile Result: %s", user)
-    return JsonResponse(user_info)
+    return JsonResponse(collected_values, status=200)
 
 def check_auth(uid, token, ts_check):
     """Utility function used for checking if the token is valid for a user
@@ -353,53 +389,65 @@ def generate_new_token(uid):
     token.save()
     return random_token
 
+# DEV ENDPOINT /get_image, PROD ENDPOINT /get-image
+@csrf_exempt
 def get_image(request):
     """Function to get the s3 image link
         Args:
             image_id (int): the id to look up
             image_type (string): the type of image to look up
     """
-    objs = {}
+    collected_values = {}
+
+    # Only allow GET requests for this endpoint
     if request.method != 'GET':
-        objs["success"] = "false"
-        objs["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(objs)
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
     image_type = request.GET['image_type']
-    image_id = request.GET['image_id']
+    image_index = request.GET['image_index']
 
-    # General images are stored as g1, g2, g3 and so on, general
-    # images also have an index that can be incremented through
-    # Profile pictures are stored as p1, p2, p3 and so on
-    prefix = ""
-    if image_type == "general":
-        prefix = "g"
-    elif image_type == "profile":
-        prefix = "p"
-    elif image_type == "reference":
-        prefix = "reference/"
+    # Check the DB for an image with the same image_type and id
+    images = Images.objects.filter(image_type=image_type, image_index=image_index)
+    if not images:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Image doesn't exist"
+        return JsonResponse(collected_values, status=400)
 
-    bucketname = 'linx-images' # bucket name
-    filename = prefix + image_id # object key
-    objs["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format(bucketname, filename)
+    collected_values["image_index"] = images[0].image_index
+    collected_values["image_id"] = images[0].iid
+    collected_values["image_type"] = images[0].image_type
+    collected_values["link"] = images[0].link
 
-    LOGGER.info("Get Image Result: %s", objs)
-    return JsonResponse(objs)
+    LOGGER.info("Get Image Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
 
+# DEV ENDPOINT /save_image, PROD ENDPOINT /save-image
+@csrf_exempt
 def save_image(request):
     """Function to save images to s3 and be recorded in the db
         Args:
             image (file): image to upload
             image_type (string): the type of image
             user_id (string): the user id who is trying to upload this image
+            token: a potentially valid token to use
     """
-    objs = {}
+    collected_values = {}
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket('linx-images')
+
+    # Only allow POST requests on this endpoint
     if request.method != 'POST':
-        objs["success"] = "false"
-        objs["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(objs)
-    image = request.data['image']
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    # Extract params and build prefix
+    image = request.FILES['image']
     image_type = request.POST['image_type']
     user_id = request.POST['user_id']
+    token = request.POST['token']
     prefix = ""
     if image_type == "general":
         prefix = "g"
@@ -408,55 +456,91 @@ def save_image(request):
     elif image_type == "reference":
         prefix = "reference/"
 
-    s3 = boto3.resource('s3')
-    bucket = s3.Bucket('linx-images')
-    file_id = 0
+    # Check auth
+    is_valid, collected_values["token"] = check_auth(user_id, token, datetime.datetime.now())
+    if not is_valid:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+
+    # Find the highest index image in that category and extract the index for the new image
+    new_image_index = 0
     image_query_set = Images.objects.filter(
-        Q(image_type=image_type)).order_by('-created_at')[:-1]
+        Q(image_type=image_type)).order_by('-image_index')
 
-    file_index = -1
     if image_query_set:
-        file_index = image_query_set[0].image_index
-    else:
-        objs["success"] = "false"
-        objs["errmsg"] = "no images currently exist"
-        return JsonResponse(objs)
+        new_image_index = image_query_set[0].image_index + 1
 
-    filename = "{}{}".format(prefix, file_index)
+    # Load params into builders and save to the db and s3
+    filename = "{}{}".format(prefix, new_image_index)
+    collected_values["image_type"] = image_type
+    collected_values["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format("linx-images", filename)
+    image_to_save = Images(user_id=user_id, image_type=image_type,
+                           link=collected_values["image_url"], image_index=new_image_index)
 
-    objs = {}
-    objs["success"] = "true"
-    objs["image_type"] = image_type
-    objs["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format("linx-images", filename)
-    image = Images(None, user_id, image_type, objs["image_url"])
-    image.save()
+    image_to_save.save()
 
-    bucket.put_object(Key=filename, Body=image)
+    # DEV protection
+    if not DEV:
+        bucket.put_object(Key=filename, Body=image)
 
-    return JsonResponse(objs)
+    # Profile picture modification on user
+    if image_type == "profile":
+        LUser.objects.filter(user_id=user_id).update(profile_picture=collected_values["image_url"])
 
+    # Collect return values
+    collected_values["success"] = True
+
+    LOGGER.info("Add Image Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
+
+# DEV ENDPOINT /react_to_image, PROD ENDPOINT /react-to-image
+@csrf_exempt
 def react_to_image(request):
     """Function to save images to s3 and be recorded in the db
         Args:
             uid (int): user's id
+            token: a potentially valid token to use
             image_id (int): the image that is being reacted to's id
             reaction_type (string): the reaction placed upon the image
     """
-    objs = {}
+    collected_values = {}
+
+    # Only allow POST requests for this endpoint
     if request.method != 'POST':
-        objs["success"] = "false"
-        objs["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(objs)
-    uid = request.GET['uid']
-    image_id = request.GET['image_id']
-    reaction_type = request.GET['reaction_type']
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
 
-    # In this way, it is possible for a user to react the same way to the same
-    # image with the same id
-    reaction = Reactions(None, uid, image_id, reaction_type)
+    # Extract Params
+    uid = request.POST['uid']
+    token = request.POST['token']
+    image_id = request.POST['image_id']
+    reaction_type = request.POST['reaction_type']
+
+    # Check auth
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    if not is_valid:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+
+    # Make sure this image exists
+    image_query_set = Images.objects.filter(
+        Q(iid=image_id)).order_by('-image_index')
+
+    if not image_query_set:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Image Id"
+        return JsonResponse(collected_values, status=400)
+
+    # Create a save reaction to image
+    reaction = Reactions(user_id=uid, iid=image_id, reaction_type=reaction_type)
     reaction.save()
-    objs["success"] = "true"
-    return JsonResponse(objs)
 
-def add_friend(request):
-    pass
+    # Collect values
+    collected_values["success"] = True
+    collected_values["reaction_type"] = reaction_type
+
+    LOGGER.info("Add Reaction Result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)

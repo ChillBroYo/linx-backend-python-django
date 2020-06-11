@@ -72,79 +72,63 @@ Hit the end point and fill the db by going to those endpoints (drop them in your
 - Look at the conversation between the `Bob` and `Regina` from `Regina`'s view:
   - http://localhost:8080/get_conversation/?uid=2&oid=1&token=<YOUR-USER1-SESSION-TOKEN-HERE>&ts=
   - you should see the 2 messages sent above
-
-  ################################ --> below is unfinished
 - Have `Regina Williams` send 1 message to `Tommy Brixton`
-  - http://localhost:8080/add_message/?uid=2&oid=1&token=<YOUR-USER2-SESSION-TOKEN-HERE>&msg=hello2
-  - you should get a `{"token": "<YOUR-USER2-SESSION-TOKEN-HERE>", "success": "true"}` back 
-- Look at the conversation between the 2 again from the other's view:
-  - http://localhost:8080/get_convo/?uid=2&oid=1&token=<YOUR-USER2-SESSION-TOKEN-HERE>&ts=
-  - you should see the new message sent above (note the UID and OID don't matter only the token for making the request)
-- See the users that `sam` has messaged:
-  - http://localhost:8080/messages/?uid=1&token=<YOUR-USER1-SESSION-TOKEN-HERE>
-  - you should get a `{"token": "<YOUR-USER1-SESSION-TOKEN-HERE>", "success": "true", "users": {"2": 2}}`
-  - this shows the id's of the users messaged and how many messages were sent by
-- Change user `sam`'s password and info
-  - http://localhost:8080/update_profile/?uid=1&email=sam@gmail.com&username=sam&password=1234&info=%7B%22secret%22=%22blah%22%7D&token=<YOUR-USER1-SESSION-TOKEN-HERE>
-  - this should change the password to 1234
+   - http://localhost:8080/add_message/
+   - uid: 2
+   - oid: 3
+   - token: <YOUR-USER1-SESSION-TOKEN-HERE>
+   - msg: Who's this chillbroyo Bob Hope?
   - you should get a `{"token": "<YOUR-USER1-SESSION-TOKEN-HERE>", "success": "true"}` back
-- Now see if you are locked out with the old password for sam and then use the new password and succeed
-  - http://localhost:8080/sign_in?uid=sam&password=123
-  - you should get `{"success": false, "errmsg": "User doesn't exist"}` back
-  - http://localhost:8080/sign_in?uid=sam&password=1234
-  - you should get `{"success": true, "token": "<YOUR-USER1-SESSION-TOKEN-HERE>", "uid": 1, "email": "sam@gmail.com", "username": "sam", "password": "1234", "info": "{\"secret\"=\"blah\"}"}` back
-- Provided this all works ... you should be all setup!
+- Look at `Regina`'s conversation list
+  - http://localhost:8080/get_conversation_list/?uid=2&token=<YOUR-USER2-SESSION-TOKEN-HERE>&limit=1000
+  - You should see that there were 2 messages sent from user 1 AND 1 Message from 2 to 3
+- Look at `Tommy Brixton`'s profile information
+  - localhost:8080/get_profile/?uid=3&key=123
+  - you should get the user's profile information
+- Confirm `Tommy Brixton`'s current password login
+  - localhost:8080/sign_in/?username=tswag&password=123b
+  - you should get the user's info
+- Change user `Tommy Brixton`'s password
+  - http://localhost:8080/update_profile/
+  - user_id:3
+  - username:tswag
+  - password:abc
+  - email:tfgh@aol.com
+  - profile_picture:https://static.billboard.com/files/media/bob-dylan-live-1969-rx-billboard-u-1548-1024x677.jpg
+  - image_index:0
+  - images_visited:[]
+  - friends:[]
+  - security_level:user
+    info:{"name":{"first":"Tommy","last":"Brixton"},"city":"San Francisco","state":"CA","distance"1.25,"birthday":"05/04/1997","ageRange":[23,29],"gender":"male","sameGender":false,"interests":["nature","food"],"sameInterests":true,"imgUrl":"https://static.billboard.com/files/media/bob-dylan-live-1969-rx-billboard-u-1548-1024x677.jpg"}
+  - token:986c36f2-2937-4f38-81d4-5ef2eb4def66
+  - this should change the password to 1234
+- Confirm that `Tommy Brixton`'s password has been changed
+ - localhost:8080/sign_in/?username=tswag&password=123b
+ - you should get a message that the user does not exist
+ - localhost:8080/sign_in/?username=tswag&password=abc
+ - you should get the user's info
+- Fake save a profile image to `Tommy Brixton`
+ - localhost:8080/save_image/
+ - image: <your image you upload>
+ - token: <YOUR-USER3-SESSION-TOKEN-HERE>
+ - image_type: profile
+- See the new image uploaded and the new profile picture for `Tommy Brixton`
+ - localhost:8080/get_image/?image_type=profile&image_index=0
+ - you should see the image info that has just been uploaded
+ - localhost:8080/get_profile/?uid=3&key=123
+ - you should see that the profile picture link has been changed to the new url
+- Fake save a general image from `Tommy Brixton`
+ - localhost:8080/save_image/
+ - image: <your image you upload>
+ - token: <YOUR-USER3-SESSION-TOKEN-HERE>
+ - image_type: general
+- Have `Bob Hope` react with a `smiley face` to `Tommy Brixton`'s photo
+ - localhost:8080/react_to_image/
+ - uid:1
+ - token:545d92e4-2174-4ab1-8fa8-dc404321126f
+ - image_id:1
+ - reaction_type:smiley face
 
-Endpoint Documentation
-----------------------
-Here are the endpoints and params:
-- sign_up: used to sign up a user
-  - params:
-    - username: username of new person to sign up
-    - email: the email address of the new person
-    - password: password of new person to sign up
-    - info: user info in a mapping
-  - returns:
-    - jsonObject with a success flag of whether it succeeded or not and a user session token
 
-- sign_in: used to validate whether a user exists or not
-  - params:
-    - username: username of person to sign in
-    - password: password of person to sign in
-  - returns:
-    - jsonObject with a success flag of whether it succeeded or not, a user session token and the user's info
-
-- add_message: used to add a message between 2 users
-  - params:
-    - uid: the user sending the message
-    - oid: the user who is recieving the message
-    - token: the UID's user session token
-    - msg: the message sent
-  - returns:
-    - jsonObject with a success flag of whether it succeeded or not and a user session token
-
-- get_convo: used to see the whole message list between users
-  - params:
-    - uid: the first user
-    - oid: the other user
-    - token: the UID's user session token
-  - returns:
-    - jsonObject with a success flag of whether it succeeded or not, a user session token and all the messages between the 2 users
-
-- update_profile: used to change the user profile info after sign up
-  - params:
-    - uid: the user's id
-    - username: username of new person to sign up
-    - email: the email address of the new person
-    - password: password of new person to sign up
-    - token: the UID's user session token
-    - info: user info in a mapping
-  - returns:
-    - jsonObject with a success flag of whether it succeeded or not and a user session token
-
-- get_messages: used to get a user's messaged people and how many messages were sent to whom
-  - params:
-    - uid: the user's id
-    - token: the UID's user session token
-  - returns:
-    - jsonObject with a success flag of whether it succeeded or not, a user session token and a list of all the user ids the user specified has been messaging from or to and how many messages there were (for ranking/priority)
+- IT IS KEY TO NOTE, save_image functionality is linked directly to the buckets, the DEV param blocks accidental pushes to the s3 db,
+  turn it to False to make it push to s3

@@ -8,7 +8,7 @@ from django.utils.timezone import now
 
 class LUser(models.Model):
     """User model for user information
-        uid: auto generated user idenitification number
+        user_id: auto generated user idenitification number
         username: user defined name that must also be unique
         password: user defined password encrypted by argon2
         email: user email address
