@@ -287,17 +287,17 @@ def update_profile(request):
         return JsonResponse(collected_values, status=400)
 
     # Extract params
-    uid = request.POST['user_id']
-    username = request.POST['username']
-    password = request.POST['password']
-    email = request.POST['email']
-    profile_picture = request.POST['profile_picture']
-    image_index = request.POST['image_index']
-    image_visited = request.POST['images_visited']
-    friends = request.POST['friends']
-    security_level = request.POST['security_level']
-    token = request.POST['token']
-    info = request.POST['info']
+    uid = request.POST.get('user_id')
+    username = request.POST.get('username')
+    password = request.POST.get('password')
+    email = request.POST.get('email')
+    profile_picture = request.POST.get('profile_picture')
+    image_index = request.POST.get('image_index')
+    images_visited = request.POST.get('images_visited')
+    friends = request.POST.get('friends')
+    security_level = request.POST.get('security_level')
+    token = request.POST.get('token')
+    info = request.POST.get('info')
 
     # Check auth
     is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
@@ -306,12 +306,21 @@ def update_profile(request):
         collected_values["errmsg"] = "Invalid Token"
         return JsonResponse(collected_values, status=400)
 
+    user_obj = LUser.objects.filter(user_id=uid)[0]
+
+    # Potentiall load object with valid values
+    if username is not None: user_obj.username = username
+    if password is not None: user_obj.password = password
+    if email is not None: user_obj.email = email
+    if profile_picture is not None: user_obj.profile_picture = profile_picture
+    if image_index is not None: user_obj.image_index = image_index
+    if images_visited is not None: user_obj.images_visited = images_visited
+    if friends is not None: user_obj.friends = friends
+    if security_level is not None: user_obj.security_level = security_level
+    if info is not None: user_obj.info = info
+
     # Update user record
-    LUser.objects.filter(user_id=uid).update(username=username, password=password, email=email,
-                                             profile_picture=profile_picture,
-                                             image_index=image_index, images_visited=image_visited,
-                                             friends=friends, security_level=security_level,
-                                             info=info)
+    user_obj.save()
 
     # Collect Return values
     collected_values["success"] = True
