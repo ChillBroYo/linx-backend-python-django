@@ -427,6 +427,7 @@ def get_image(request):
     collected_values["image_index"] = images[0].image_index
     collected_values["image_id"] = images[0].iid
     collected_values["image_type"] = images[0].image_type
+    collected_values["image_category"] = images[0].image_category
     collected_values["link"] = images[0].link
 
     LOGGER.info("Get Image Result: %s", collected_values)

@@ -162,6 +162,7 @@ class Images(models.Model):
     user_id = models.CharField('user_id', max_length=50)
     image_index = models.IntegerField(null=True)
     image_type = models.CharField('image_type', max_length=50)
+    image_category = models.CharField('image_category', max_length=50)
     link = models.TextField(blank=True)
     created_at = models.DateTimeField(default=now, editable=False)
 
