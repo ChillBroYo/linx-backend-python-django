@@ -457,7 +457,7 @@ def save_image(request):
         return JsonResponse(collected_values, status=400)
 
     # Extract params and build prefix
-    image = request.FILES.get('image')
+    image = request.FILES['image']
     image_type = request.POST['image_type']
     image_category = request.POST['image_category']
     user_id = request.POST['user_id']
@@ -499,7 +499,7 @@ def save_image(request):
 
     # DEV protection
     if not DEV:
-        bucket.put_object(Key=filename, Body=image.read())
+        bucket.put_object(Key=filename, Body=image)
 
     # Profile picture modification on user
     if image_type == "profile":
