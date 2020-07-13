@@ -2,6 +2,7 @@
 import uuid
 import logging
 import datetime
+import io
 import boto3
 from django.db.models import Q
 from django.http import JsonResponse
@@ -13,7 +14,7 @@ from linx.models import LUser, Messages, TokenAuth, Images, Reactions
 LOGGER = logging.getLogger('django')
 
 # Debug param to prevent bad s3 requests
-DEV = True
+DEV = False
 
 # Unique Contraint on username and email field
 # DEV ENDPOINT /sign_up, PROD ENDPOINT /sign-up
@@ -429,6 +430,7 @@ def get_image(request):
     collected_values["image_type"] = images[0].image_type
     collected_values["image_category"] = images[0].image_category
     collected_values["link"] = images[0].link
+    collected_values["success"] = True
 
     LOGGER.info("Get Image Result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
@@ -440,6 +442,7 @@ def save_image(request):
         Args:
             image (file): image to upload
             image_type (string): the type of image
+            image_category (string): the category of the image
             user_id (string): the user id who is trying to upload this image
             token: a potentially valid token to use
     """
@@ -454,13 +457,16 @@ def save_image(request):
         return JsonResponse(collected_values, status=400)
 
     # Extract params and build prefix
-    image = request.FILES['image']
+    image = request.FILES.get('image')
     image_type = request.POST['image_type']
+    image_category = request.POST['image_category']
     user_id = request.POST['user_id']
     token = request.POST['token']
     prefix = ""
+    ending_modifier = ""
     if image_type == "general":
         prefix = "g"
+        ending_modifier = ".png"
     elif image_type == "profile":
         prefix = "p"
     elif image_type == "reference":
@@ -482,17 +488,18 @@ def save_image(request):
         new_image_index = image_query_set[0].image_index + 1
 
     # Load params into builders and save to the db and s3
-    filename = "{}{}".format(prefix, new_image_index)
+    filename = "{}{}{}".format(prefix, new_image_index, ending_modifier)
     collected_values["image_type"] = image_type
     collected_values["image_url"] = "https://{}.s3-us-west-2.amazonaws.com/{}".format("linx-images", filename)
     image_to_save = Images(user_id=user_id, image_type=image_type,
-                           link=collected_values["image_url"], image_index=new_image_index)
+                           link=collected_values["image_url"], image_category=image_category,
+                           image_index=new_image_index)
 
     image_to_save.save()
 
     # DEV protection
     if not DEV:
-        bucket.put_object(Key=filename, Body=image)
+        bucket.put_object(Key=filename, Body=image.read())
 
     # Profile picture modification on user
     if image_type == "profile":
