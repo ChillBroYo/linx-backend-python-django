@@ -112,6 +112,7 @@ def sign_in(request):
     collected_values["username"] = user[0].username
     collected_values["password"] = user[0].password
     collected_values["info"] = str(user[0].info)
+    collected_values["friends"] = user[0].friends
     collected_values["success"] = True
 
     LOGGER.info("Sign In Result: %s", collected_values)
