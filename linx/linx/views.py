@@ -157,7 +157,7 @@ def add_message(request):
     LOGGER.info("Add Message Result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
 
-# DEV ENDPOINT /get_messages, PROD ENDPOINT /get-messages
+# DEV ENDPOINT /get_conversation_list, PROD ENDPOINT /get-conversation-list
 @csrf_exempt
 def get_conversation_list(request):
     """Gets a list of all the user profiles that a user has messaged
@@ -219,6 +219,7 @@ def get_conversation(request):
             oid (string): the other user's id
             token (string): a user's token for auth
             ts: timestamp to search behind
+            tus: (time user seen) whether or not to mark the time that the user has seen these messages
             limit: the limit of messages to search for
     """
     collected_values = {}
@@ -234,10 +235,15 @@ def get_conversation(request):
     oid = request.GET['oid']
     token = request.GET['token']
     ts_query = request.GET['ts']
+    time_user_seen = request.GET.get('tus')
     limit = int(request.GET['limit'])
 
     if ts_query == "":
         ts_query = timezone.now()
+
+    change_user_seen = False
+    if time_user_seen == "true":
+        change_user_seen = True
 
     # Check if token is valid
     is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
@@ -254,6 +260,9 @@ def get_conversation(request):
     # Collect all messages from query
     test_list = []
     for message in message_query_set:
+        if change_user_seen:
+            message.time_user_seen = datetime.datetime.now()
+            message.save()
         test_list.append(message.get_map())
 
     # Collect return values

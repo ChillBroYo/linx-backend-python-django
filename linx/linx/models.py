@@ -102,6 +102,8 @@ class Messages(models.Model):
     user_id = models.CharField('user_id', max_length=50)
     other_id = models.CharField('other_id', max_length=50)
     msg = models.CharField('msg', max_length=250)
+    time_user_seen = models.DateTimeField(default=now, editable=True)
+    users_notified = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=now, editable=False)
 
     def get_map(self):
@@ -111,6 +113,8 @@ class Messages(models.Model):
         return_object["user_id"] = self.user_id
         return_object["other_id"] = self.other_id
         return_object["message"] = self.msg
+        return_object["time_user_seen"] = self.time_user_seen
+        return_object["users_notified"] = self.users_notified
         return_object["created_at"] = self.created_at.__str__()
         return return_object
 
