@@ -4,6 +4,7 @@ TBD IMPROVEMENTS: Create different table to "cache" a user's recent messages to 
 import uuid
 import json
 from django.db import models
+import date
 from django.utils.timezone import now
 
 class LUser(models.Model):
@@ -30,6 +31,7 @@ class LUser(models.Model):
     image_index = models.IntegerField(auto_created=False)
     images_visited = models.TextField(blank=True)
     friends = models.TextField(blank=True)
+    last_friend_added = models.DateTimeField(editable=True)
     created_at = models.DateTimeField(default=now, editable=False)
 
     def get_map(self):
