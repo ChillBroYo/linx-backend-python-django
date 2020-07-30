@@ -104,7 +104,7 @@ class Messages(models.Model):
     user_id = models.CharField('user_id', max_length=50)
     other_id = models.CharField('other_id', max_length=50)
     msg = models.CharField('msg', max_length=250)
-    time_user_seen = models.DateTimeField(default=now, editable=True)
+    time_user_seen = models.DateTimeField(editable=True, null=True)
     users_notified = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=now, editable=False)
 
