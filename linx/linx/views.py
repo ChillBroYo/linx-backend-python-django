@@ -147,7 +147,8 @@ def sign_up(request):
     # Create the user, with no images visited or friends
     new_user = LUser.create_luser(username=username, email=email, profile_picture=profile_picture,
                                   image_index=0, images_visited="[]", password=password,
-                                  friends="[]", security_level=security_level, info=info)
+                                  friends="[]", security_level=security_level, last_friend_added=datetime.datetime.now(),
+                                  info=info)
 
     # Create new token for user in TokenAuth db
     collected_values["token"] = generate_new_token(new_user.user_id)

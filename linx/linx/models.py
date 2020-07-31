@@ -4,7 +4,7 @@ TBD IMPROVEMENTS: Create different table to "cache" a user's recent messages to 
 import uuid
 import json
 from django.db import models
-import date
+import datetime
 from django.utils.timezone import now
 
 class LUser(models.Model):
@@ -88,7 +88,8 @@ class LUser(models.Model):
         new_user = LUser(username=username, password=password, email=email,
                          profile_picture=profile_picture, image_index=image_index,
                          images_visited=images_visited, friends=friends,
-                         security_level=security_level, info=info)
+                         security_level=security_level, last_friend_added=datetime.datetime.now(),
+                         info=info)
         new_user.save()
         return new_user
 
