@@ -73,7 +73,7 @@ class LUser(models.Model):
     @classmethod
     def create_luser(cls, username, password, email,
                      profile_picture, image_index, images_visited,
-                     friends, security_level, info) -> object:
+                     friends, security_level, last_friend_added, info) -> object:
         """Creates a User object, saves it to the db and returns a copy of the object back
              username: user defined name that must also be unique
             password: user defined password encrypted by argon2
