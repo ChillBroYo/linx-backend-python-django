@@ -594,7 +594,7 @@ def save_image(request):
 
     # DEV protection
     if not DEV:
-        bucket.put_object(Key=filename, Body=image)
+        bucket.put_object(Key=filename, Body=image.read())
 
     # Profile picture modification on user
     if image_type == "profile":
