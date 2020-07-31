@@ -71,20 +71,28 @@ user_ids = []
 query = "SELECT user_id, info from linx_luser ORDER BY user_id;"
 user_id_query = cursor.execute(query).fetchall()
 for row in user_id_query:
-    query = "SELECT COUNT(mid) FROM linx_messages WHERE user_id = {} AND (time_user_seen == NULL OR users_notified='false');".format(row[0])
+    query = "SELECT COUNT(mid) FROM linx_messages WHERE user_id = {} AND (time_user_seen == NULL OR users_notified='0');".format(row[0])
+    print("find --> {}".format(query))
     count_query = cursor.execute(query).fetchall()
     if int(count_query[0][0]) > 0:
+        print("thing is {}".format(int(count_query[0][0])))
+        print(query)
         user_ids.append(row[0])
-        "ALTER TABLE linx_messages SET time_user_seen=\'{}\', users_notified=\'true\' WHERE user_id={}".format(datetime.datetime.now(), row[0])
-        count_query = cursor.execute(query)
+        query2 = "UPDATE linx_messages SET time_user_seen=time(\'now\'), users_notified=\'true\' WHERE user_id={};".format(row[0])
+        print("this -> {}".format(query2))
+        count_query = cursor.execute(query2)
+        sql_connect.commit()
 
 sql_connect.close()
-
+print(user_ids)
 for user_id in user_ids:
-    loaded_info = json.loads(user_id_query[user_id][1])
+    print(user_id_query[user_id -1])
+    loaded_info = json.loads(user_id_query[user_id - 1][1])
+    if loaded_info.get("expoPushToken") == None:
+        continue
     expo_push_token = loaded_info["expoPushToken"]
     data = {"user_id": "{}".format(user_id),
-         "timestamp": datetime.datetime.now(),
+         "timestamp": str(datetime.datetime.now()),
          "type": "message"
          }
     send_push_message(expo_push_token, "You have a new message", data) 
