@@ -14,7 +14,7 @@ from linx.models import LUser, Messages, TokenAuth, Images, Reactions
 LOGGER = logging.getLogger('django')
 
 # Debug param to prevent bad s3 requests
-DEV = False
+DEV = True
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
                        '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
