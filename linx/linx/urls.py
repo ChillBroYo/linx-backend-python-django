@@ -28,5 +28,6 @@ urlpatterns = [
     path('update_profile/', views.update_profile, name='updateprofile'),
     path('get_image/', views.get_image, name='getImage'),
     path('save_image/', views.save_image, name='saveImage'),
-    path('react_to_image/', views.react_to_image, name='reactToImage')
+    path('react_to_image/', views.react_to_image, name='reactToImage'),
+    path('is_valid_linx_zip/', views.is_valid_lix_zip, name='isValidLinxZip')
 ]
