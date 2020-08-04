@@ -9,6 +9,9 @@ from exponent_server_sdk import PushResponseError
 from exponent_server_sdk import PushServerError
 from requests.exceptions import ConnectionError
 from requests.exceptions import HTTPError
+
+TIME_SINCE_LAST_REACTION_MINIMUM = 5
+
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
                        '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
                        '94587', '94601', '94603', '94602', '94605', '94607', '94606', '94609', '94608', '94611', '94610', '94613', '94612', '94618',
@@ -70,7 +73,7 @@ VALID_REGIONS = [BAY_AREA_REGIONS, LA_REGIONS]
 
 def is_valid_linx_zip(zip_code):
     for region in VALID_REGIONS:
-        for county in VALID_REGIONS[region]:
+        for county in region:
             if zip_code in county:
                 return True
     return False
@@ -78,7 +81,7 @@ def is_valid_linx_zip(zip_code):
 # Does not check if the zip_codes exist, run is_valid first
 def in_same_city(first_zip, second_zip):
     for region in VALID_REGIONS:
-        for county in VALID_REGIONS[region]:
+        for county in region:
             if first_zip in county and second_zip in county:
                 return True
     return False
@@ -142,12 +145,16 @@ sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.s
 cursor = sql_connect.cursor()
 
 # Search for friends that are compatible
+## Search for users that have reacted the same way to the same images
 query = "SELECT DISTINCT a.iid as image_id, a.user_id as a_user, b.user_id as b_user FROM linx_reactions as a INNER JOIN linx_reactions as b ON a.iid = b.iid WHERE a.reaction_type = b.reaction_type AND a.user_id != b.user_id;"
 reaction_results = cursor.execute(query).fetchall()
-query = "SELECT user_id, friends, info, last_friend_added FROM linx_luser;"
+
+# Get all needed user info
+query = "SELECT user_id, friends, info, last_friend_added FROM linx_luser ORDER BY user_id;"
 friends_results = cursor.execute(query).fetchall()
 sql_connect.close()
 
+# Create a map of all a_users -> b_users -> how many times they have reacted the same
 reaction_map = {}
 for row in reaction_results:
     if reaction_map.get(row[1]) == None:
@@ -159,80 +166,91 @@ for row in reaction_results:
         else:
             reaction_map[row[1]][row[2]] += 1
 
+# Create map of current user friends
+user_to_friends_to_change = {}
+for row in friends_results:
+        # create dictionary of user_id to list
+        user_to_friends_to_change[str(row[0])] = row[1].strip('][').split(',')
+
+print("user to friends to change {}".format(user_to_friends_to_change))
+
+# Create a map of users that are above the threshold for minimum "friendliness"
 friends_to_match = []
-print("reaction map {}".format(reaction_map))
 for user in reaction_map:
     for matching_user in reaction_map[user]:
         if reaction_map[user][matching_user] > 4:
             friend_combo = (user, matching_user)
             reverse_friend_combo = (matching_user, user)
-            if friend_combo not in friends_to_match:
-                friends_to_match.append(friend_combo)
-                friends_to_match.append(reverse_friend_combo)
+            if len(friends_to_match) > 1:
+#                if friend_combo in friends_to_match or reverse_friend_combo in friends_to_match:
+                exists = False
+                for combo in friends_to_match:
+                    #print("about to compare {} to {}".format(friend_combo, friends_to_match))
+                    if user in combo or matching_user in combo:
+                        exists = True
+                        break
 
-user_to_friends_to_change = {}
-for row in friends_results:
+                if exists == False:
+
+                    # Ensure users are within the correct zip codes available
+                    loaded_info_1 = json.loads(friends_results[int(user) - 1][2])
+                    loaded_info_2 = json.loads(friends_results[int(matching_user) - 1][2])
+                    if (loaded_info_1["location"].get("zip") != None and loaded_info_2["location"].get("zip") != None
+                        and is_valid_linx_zip(loaded_info_1["location"]["zip"])
+                        and is_valid_linx_zip(loaded_info_2["location"]["zip"])
+                        and in_same_city(loaded_info_1["location"]["zip"], loaded_info_2["location"]["zip"])):
+                        
+                        if matching_user not in user_to_friends_to_change[user]:
+                            friends_to_match.append(friend_combo)
+                            friends_to_match.append(reverse_friend_combo)
+            else:
+                if matching_user not in user_to_friends_to_change[user]:
+                    friends_to_match.append(friend_combo)
+                    friends_to_match.append(reverse_friend_combo)
+
+print("friends to match {}".format(friends_to_match))
+
+# create new mapping of current users friends
+new_user_friends = {}
+for combo in friends_to_match:
+
     # create dictionary of user_id to list
-    user_to_friends_to_change[str(row[0])] = row[1].strip('][').split(',')
+    new_user_friends[str(combo[0])] = friends_results[int(combo[0]) - 1][1].strip('][').split(',')
+    if new_user_friends[str(combo[0])][0] == "":
+        new_user_friends[str(combo[0])].remove("")
 
-final_modifcations = {}
+    new_user_friends[str(combo[0])].append(combo[1])
 
-print(friends_results)
-print("ll")
-#print(user_to_friends_to_change)
-for item in friends_to_match:
-    print("item = {}".format(item))
-    first_item = int(item[0])
-    second_item = int(item[1])
-    # If one is none they are both none seeing as we adding 2 at a time
-    if item[1] not in user_to_friends_to_change[item[0]]:
-        if final_modifcations.get(first_item) is None:
-            loaded_info_1 = json.loads(friends_results[first_item - 1][2])
-            loaded_info_2 = json.loads(friends_results[second_item - 1][2])
-            if (loaded_info_1["location"].get("zip") != None and loaded_info_2["location"].get("zip") != None
-                    and is_valid_linx_zip(loaded_info_1["location"]["zip"])
-                    and is_valid_linx_zip(loaded_info_2["location"]["zip"])
-                    and in_same_city(loaded_info_1["location"]["zip"], loaded_info_2["location"]["zip"])):
-                        user_to_friends_to_change[first_item] = []
-                        user_to_friends_to_change[first_item].append(second_item)
-                        final_modifcations[first_item] = user_to_friends_to_change[first_item]
-                        user_to_friends_to_change[second_item] = []
-                        user_to_friends_to_change[second_item].append(first_item)
-                        final_modifcations[second_item] = user_to_friends_to_change[second_item]
-        else:
-            pass
-           # Commenting out becasue only 1 should be added
-           # final_modifcations[item[0]].append(item[1])
-           # final_modifcations[item[0]] = final_modifcations[item[0]]
-           # final_modifcations[item[1]].append(item[0])
-           # final_modifcations[item[1]] = final_modifcations[item[1]]
+print("new_user_friends {}".format(new_user_friends))
 
-print(final_modifcations)
 print("About to execute commands")
-sql_connect = sqlite3.connect('/Users/sam/Projects/linx-backend-python-django/linx/db.sqlite3')
+sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.sqlite3')
 cursor = sql_connect.cursor()
 
-
-for item in final_modifcations:
-    loaded_info = json.loads(friends_results[item][2])
-    last_reaction_time = datetime.datetime.now() - loaded_info["lastReaction"]
-    friend_time_elapsed = datetime.datetime.now() - friends_results[item][3]
-    new_friends = friends_results[item - 1][1].strip('][').split(',')
-    if last_reaction_time.days < 2 and friend_time_elapsed.days > 1 and item not in new_friends:
-        new_friends.extend(final_modifcations[item])
-        query = "UPDATE linx_luser SET friends=\'{}\' last_friend_added={} WHERE user_id = {}".format(new_friends, datetime.datetime.now(), item)
-        new_friends = friends_results[final_modifcations[item][0] - 1][1].strip('][').split(',')
-        new_friends.extend(item)
-        query = "UPDATE linx_luser SET friends=\'{}\' last_friend_added={} WHERE user_id = {}".format(new_friends, datetime.datetime.now(), final_modifcations[item][0])
+ones_to_actually_notify = []
+for user_id in new_user_friends:
+    loaded_info = json.loads(friends_results[int(user_id) - 1][2])
+    print(loaded_info["lastReaction"])
+    last_reaction_time = datetime.datetime.strptime(loaded_info["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
+    last_friend_time = datetime.datetime.strptime(friends_results[int(user_id) - 1][3], "%Y-%m-%d %H:%M:%S.%f")
+    last_reaction_elapsed = datetime.datetime.now() - last_reaction_time
+    last_friend_elapsed = datetime.datetime.now() - last_friend_time
+    if last_reaction_elapsed.days < TIME_SINCE_LAST_REACTION_MINIMUM and last_friend_elapsed.days > 1:
+        ones_to_actually_notify.append(user_id)
+        query = "UPDATE linx_luser SET friends=\'{}\' last_friend_added={} WHERE user_id = {}".format(new_user_friends[user_id], datetime.datetime.now(), user_id)
+        print("About to run: {}".format(query))
         cursor.execute(query)
+        sql_connect.commit()
 
 sql_connect.close()
 
-for index in final_modifcations:
-    loaded_info = json.loads(friends_results[index][2])
+
+for user_id in ones_to_actually_notify:
+    print("About to send notifications for user {}".format(user_id))
+    loaded_info = json.loads(friends_results[int(user_id) - 1][2])
     expo_push_token = loaded_info["expoPushToken"]
-    data = {"user_id": "{}".format(item),
-         "timestamp": datetime.datetime.now(),
+    data = {"user_id": "{}".format(user_id),
+         "timestamp": str(datetime.datetime.now()),
          "type": "friends"
          }
-    send_push_message(expo_push_token, "You have a new friend!", data) 
+    send_push_message(expo_push_token, "You have a new friend! \uD83D\uDE00", data) 
