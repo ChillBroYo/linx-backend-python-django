@@ -10,6 +10,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from linx.models import LUser, Messages, TokenAuth, Images, Reactions
 
+SUPER_SECURE_STRING = "123"
+
 # Get Logger
 LOGGER = logging.getLogger('django')
 
@@ -77,7 +79,7 @@ VALID_REGIONS = [BAY_AREA_REGIONS, LA_REGIONS]
 
 def is_valid_linx_zip_helper(zip_code):
     for region in VALID_REGIONS:
-        for county in VALID_REGIONS[region]:
+        for county in region:
             if zip_code in county:
                 return True
     return False
@@ -86,19 +88,88 @@ def is_valid_linx_zip_helper(zip_code):
 # DEV ENDPOINT /is_valid_linx_zip, PROD ENDPOINT /is-valid-linx-zip
 @csrf_exempt
 def is_valid_linx_zip(request):
-    if request.method != 'POST':
+    """Check if a zip code is in the valid zip code ranges
+        Get Request Args:
+            zip (string): the zip code to check
+            key (string): password to block anyone from accessing
+    """ 
+    collected_values = {}
+
+    if request.method != 'GET':
         collected_values["success"] = False
         collected_values["errmsg"] = "Wrong HTTP verb"
         return JsonResponse(collected_values, status=400)
     email = request.GET['zip']
+    key = request.GET['key']
+    
+    if key != SUPER_SECURE_STRING:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Unauthorized access"
+        return JsonResponse(collected_values, status=400)
 
     if is_valid_linx_zip_helper(email):
         collected_values["success"] = True
+        collected_values["is_valid"] = True
         return JsonResponse(collected_values, status=200)
 
-    collected_values["success"] = False
-    collected_values["errmsg"] = "Not a valid linx zip code"
+    collected_values["success"] = True
+    collected_values["is_valid"] = False
+
+    LOGGER.info("Is valid linx zip result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
+
+
+# DEV ENDPOINT /common_images_between_users, PROD ENDPOINT /common-images-between-users
+@csrf_exempt
+def common_images_between_users(request):
+    """Get a list of all the images are valid 
+        GET Request Args:
+            user_id: the user id of the user requesting this
+            token: the potentially token of the user_id specified
+            oid: the other user's id to look up
+    """
+    collected_values = {}
+
+    if request.method != 'GET':
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+
+    collected_values["user_id"] = request.GET["user_id"]
+    collected_values["token"] = request.GET["token"]
+    collected_values["oid"] = request.GET["oid"]
+
+    # Check auth
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    if not is_valid:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+    
+    # Get all matching users and the image id from linx_reactions
+    user_raw_query = '''SELECT DISTINCT a.iid FROM linx_reactions as a
+                        INNER JOIN linx_reactions as b ON a.iid = b.iid AND a.user_id == '{}'
+                        AND b.user_id = '{}' ORDER BY a.iid; '''.format(int(user_id), int(oid))
+
+    image_ids_to_list = Reactions.objects.all(user_raw_query)
+    image_ids = ""
+
+    # Load rows to string
+    for image_id in image_ids_to_list:
+        image_ids = image_ids + "\'" + str(image_id) + "\',"
+    
+    # Remove last comma
+    image_ids = image_ids[:-1]
+    
+    image_links_query = "SELECT link FROM linx_images WHERE iid IN ({});".format(image_ids)
+    image_links_to_show = Images.objects.all(image_links_query)
+    list_image_ids = list(image_links_to_show)
+    collected_values["images_urls"] = list_image_ids
+    collected_values["success"] = True
+
+    LOGGER.info("Common images between users result: %s", collected_values)
+    return JsonResponse(collected_values, status=200)
+    
 
 # Unique Contraint on username and email field
 # DEV ENDPOINT /sign_up, PROD ENDPOINT /sign-up
@@ -447,7 +518,7 @@ def get_profile(request):
     key = request.GET['key']
 
     # Hardcoded key for security
-    if key != "123":
+    if key != SUPER_SECURE_STRING:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Key"
         return JsonResponse(collected_values, status=400)
@@ -501,6 +572,9 @@ def get_image(request):
         Args:
             image_id (int): the id to look up
             image_type (string): the type of image to look up
+            key: a key that prevents just anyone from hitting this endpoint, default 123
+        NOTE: Allowing any user to get this info with a known secret
+        (to be in the future made to each new app's app id)
     """
     collected_values = {}
 
