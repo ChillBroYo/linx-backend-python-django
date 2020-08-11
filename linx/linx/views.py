@@ -140,6 +140,7 @@ def common_images_between_users(request):
     collected_values["token"] = request.GET["token"]
     token = collected_values["token"]
     collected_values["oid"] = request.GET["oid"]
+    oid = collected_values["oid"]
 
     # Check auth
     is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
