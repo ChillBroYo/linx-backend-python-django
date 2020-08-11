@@ -136,6 +136,7 @@ def common_images_between_users(request):
         return JsonResponse(collected_values, status=400)
 
     collected_values["user_id"] = request.GET["user_id"]
+    uid = collected_values["user_id"]
     collected_values["token"] = request.GET["token"]
     collected_values["oid"] = request.GET["oid"]
 
@@ -149,7 +150,7 @@ def common_images_between_users(request):
     # Get all matching users and the image id from linx_reactions
     user_raw_query = '''SELECT DISTINCT a.iid FROM linx_reactions as a
                         INNER JOIN linx_reactions as b ON a.iid = b.iid AND a.user_id == '{}'
-                        AND b.user_id = '{}' ORDER BY a.iid; '''.format(int(user_id), int(oid))
+                        AND b.user_id = '{}' ORDER BY a.iid; '''.format(int(uid), int(oid))
 
     image_ids_to_list = Reactions.objects.all(user_raw_query)
     image_ids = ""
