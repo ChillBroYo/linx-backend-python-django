@@ -138,6 +138,7 @@ def common_images_between_users(request):
     collected_values["user_id"] = request.GET["user_id"]
     uid = collected_values["user_id"]
     collected_values["token"] = request.GET["token"]
+    token = collected_values["token"]
     collected_values["oid"] = request.GET["oid"]
 
     # Check auth
