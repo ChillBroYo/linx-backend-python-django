@@ -603,6 +603,7 @@ def get_image(request):
     collected_values["image_type"] = images[0].image_type
     collected_values["image_category"] = images[0].image_category
     collected_values["link"] = images[0].link
+    collected_values["message"] = images[0].message
     collected_values["success"] = True
 
     LOGGER.info("Get Image Result: %s", collected_values)

@@ -163,6 +163,7 @@ class Images(models.Model):
         link: the link to the s3 bucket storage location of the image
         image_index: the image's index to be displayed, only images to display will have indexes
         image_type: the type of image uploaded
+        message: the message to display below the image
         created_at: the time the image was uploaded
     """
     iid = models.AutoField(primary_key=True)
@@ -171,6 +172,7 @@ class Images(models.Model):
     image_type = models.CharField('image_type', max_length=50)
     image_category = models.CharField('image_category', max_length=50)
     link = models.TextField(blank=True)
+    message = models.TextField(blank=True)
     created_at = models.DateTimeField(default=now, editable=False)
 
 class Reactions(models.Model):
