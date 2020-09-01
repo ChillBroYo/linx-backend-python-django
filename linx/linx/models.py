@@ -171,6 +171,7 @@ class Images(models.Model):
     image_type = models.CharField('image_type', max_length=50)
     image_category = models.CharField('image_category', max_length=50)
     link = models.TextField(blank=True)
+    message = models.TextField(blank=True)
     created_at = models.DateTimeField(default=now, editable=False)
 
 class Reactions(models.Model):

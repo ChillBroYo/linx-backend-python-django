@@ -16,7 +16,7 @@ SUPER_SECURE_STRING = "123"
 LOGGER = logging.getLogger('django')
 
 # Debug param to prevent bad s3 requests
-DEV = True
+DEV = False
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
                        '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
@@ -72,7 +72,7 @@ LA_COUNTY_ZIPS = ['90895', '91001', '91006', '91007', '91011', '91010', '91016',
                   '90601', '90603', '90602', '90605', '90604', '90606', '90631', '90639', '90638', '90650', '90640', '90660', '90670', '90702',
                   '90701', '90704', '90703', '90706', '90710', '90713', '90712', '90715', '90717', '90716', '90731', '90723', '90733', '90732',
                   '90745', '90744', '90747', '90746', '90755', '90803', '90802', '90805', '90804', '90807', '90806', '90808', '90813', '90810',
-                  '90815', '90814', '90840']
+                  '90815', '90814', '90840', '91710']
 LA_REGIONS = [LA_COUNTY_ZIPS]
 
 VALID_REGIONS = [BAY_AREA_REGIONS, LA_REGIONS]
@@ -150,23 +150,25 @@ def common_images_between_users(request):
         return JsonResponse(collected_values, status=400)
     
     # Get all matching users and the image id from linx_reactions
-    user_raw_query = '''SELECT DISTINCT a.iid FROM linx_reactions as a
-                        INNER JOIN linx_reactions as b ON a.iid = b.iid AND a.user_id == '{}'
-                        AND b.user_id = '{}' ORDER BY a.iid; '''.format(int(uid), int(oid))
+    user_raw_query = "SELECT DISTINCT a.rid, a.iid FROM linx_reactions as a INNER JOIN linx_reactions as b ON a.iid = b.iid AND a.user_id == \'{}\' AND b.user_id = \'{}\' ORDER BY a.iid;".format(uid, oid)
 
-    image_ids_to_list = Reactions.objects.all(user_raw_query)
+    image_ids_to_list = Reactions.objects.raw(user_raw_query)
+
     image_ids = ""
 
     # Load rows to string
-    for image_id in image_ids_to_list:
-        image_ids = image_ids + "\'" + str(image_id) + "\',"
+    for image_obj in image_ids_to_list:
+        image_ids = image_ids + "\'" + str(image_obj.iid) + "\',"
     
     # Remove last comma
     image_ids = image_ids[:-1]
     
-    image_links_query = "SELECT link FROM linx_images WHERE iid IN ({});".format(image_ids)
-    image_links_to_show = Images.objects.all(image_links_query)
-    list_image_ids = list(image_links_to_show)
+    image_links_query = "SELECT iid,link FROM linx_images WHERE iid IN ({});".format(image_ids)
+    image_links_to_show = Images.objects.raw(image_links_query)
+    list_image_ids = []
+    for image_obj in image_links_to_show:
+        list_image_ids.append(image_obj.link)
+
     collected_values["images_urls"] = list_image_ids
     collected_values["success"] = True
 
@@ -602,6 +604,7 @@ def get_image(request):
     collected_values["image_type"] = images[0].image_type
     collected_values["image_category"] = images[0].image_category
     collected_values["link"] = images[0].link
+    collected_values["message"] = images[0].message
     collected_values["success"] = True
 
     LOGGER.info("Get Image Result: %s", collected_values)
