@@ -122,7 +122,7 @@ def is_valid_linx_zip(request):
 # DEV ENDPOINT /common_images_between_users, PROD ENDPOINT /common-images-between-users
 @csrf_exempt
 def common_images_between_users(request):
-    """Get a list of all the images are valid 
+    """Get a list of all the images are valid
         GET Request Args:
             user_id: the user id of the user requesting this
             token: the potentially token of the user_id specified
@@ -148,7 +148,7 @@ def common_images_between_users(request):
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
         return JsonResponse(collected_values, status=400)
-    
+
     # Get all matching users and the image id from linx_reactions
     user_raw_query = "SELECT DISTINCT a.rid, a.iid FROM linx_reactions as a INNER JOIN linx_reactions as b ON a.iid = b.iid AND a.user_id == \'{}\' AND b.user_id = \'{}\' ORDER BY a.iid;".format(uid, oid)
 
@@ -159,10 +159,10 @@ def common_images_between_users(request):
     # Load rows to string
     for image_obj in image_ids_to_list:
         image_ids = image_ids + "\'" + str(image_obj.iid) + "\',"
-    
+
     # Remove last comma
     image_ids = image_ids[:-1]
-    
+
     image_links_query = "SELECT iid,link FROM linx_images WHERE iid IN ({});".format(image_ids)
     image_links_to_show = Images.objects.raw(image_links_query)
     list_image_ids = []
@@ -174,7 +174,6 @@ def common_images_between_users(request):
 
     LOGGER.info("Common images between users result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
-    
 
 # Unique Contraint on username and email field
 # DEV ENDPOINT /sign_up, PROD ENDPOINT /sign-up
