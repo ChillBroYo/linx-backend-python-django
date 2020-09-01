@@ -33,6 +33,7 @@ class LUser(models.Model):
     friends = models.TextField(blank=True)
     last_friend_added = models.DateTimeField(editable=True)
     created_at = models.DateTimeField(default=now, editable=False)
+    friend_not_to_add = models.TextField(blank=True)
 
     def get_map(self):
         """Return the object as a map"""

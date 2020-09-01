@@ -119,6 +119,70 @@ def is_valid_linx_zip(request):
     return JsonResponse(collected_values, status=200)
 
 
+# DEV ENDPOINT /remove_friend, PROD ENDPOINT /remove-friend
+@csrf_exempt
+def remove_friend(request):
+    """Removes a friend from the list and adds them to the block list for each user
+        If one user requests a block, these people can never connect again and are disconnected
+        POST Request Args:
+            user_id: the user id of the user requesting this
+            oid: the user id of other user to block/remove
+            token: the potentially correct token of the user_id specified
+    """
+    collected_values = {}
+
+    if request.method != 'POST':
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+    
+    uid = request.POST["user_id"]
+    oid = request.POST["oid"]
+    token = request.POST["token"]
+
+    user_raw_query = "SELECT friends, friend_not_to_add from linx_luser WHERE user_id = {}".format(uid)
+    other_raw_query = "SELECT friends, friend_not_to_add from linx_luser WHERE user_id = {}".format(uid)
+    user_friendsr = Reactions.objects.raw(user_raw_query)[0][0]
+    user_friendsb = Reactions.objects.raw(user_raw_query)[0][0]
+    other_friendsr = Reactions.objects.raw(other_raw_query)[0][1]
+    other_friendsb = Reactions.objects.raw(other_raw_query)[0][1]
+    
+    friendsr = user_friendsr.replace("[", "").replace("]", "")
+    user_friends = friendsr.split(",")
+    user_friends.remove(oid)
+    new_user_friends = "[" + ",".join(new_user_friends) + "]"
+    
+    block_listr = other_friendsr.replace("[", "").replace("]", "")
+    block_list = block_listr.split(",")
+    block_list.append(oid)
+    new_user_block = "[" + ",".join(block_list) + "]"
+
+    ofriendsr = user_friendsr.replace("[", "").replace("]", "")
+    other_friends = ofriendsr.split(",") 
+    other_friends.remove(oid)
+    new_other_friends = "[" + ",".join(other_friends) + "]"
+
+    block_listr = user_friendsb.replace("[", "").replace("]", "")
+    block_list = block_listr.split(",")
+    block_list.append(uid)
+    new_other_block = "[" + ",".join(block_list) + "]"
+    
+    user_raw_query2 = "UPDATE linx_luser SET friends = {} AND friend_not_to_add = {} WHERE user_id = {}".format(new_user_friends, new_user_block, uid)
+    other_raw_query2 = "UPDATE linx_luser SET friends = {} AND friend_not_to_add = {} WHERE user_id = {}".format(new_other_friends, new_other_block, uid)
+
+    Reactions.objects.raw(user_raw_query2)
+    Reactions.objects.raw(other_raw_query2)
+
+    collected_values["uid"] = uid
+    collected_values["oid"] = oid
+    collected_values["token"] = token
+    collected_values["raw_query_1"] = user_raw_query2
+    collected_values["raw_query_2"] = other_raw_query2
+
+    LOGGER.info("Block user request: %v", collected_values)
+    return JsonResponse(collected_values, status=200)
+    
+    
 # DEV ENDPOINT /common_images_between_users, PROD ENDPOINT /common-images-between-users
 @csrf_exempt
 def common_images_between_users(request):
