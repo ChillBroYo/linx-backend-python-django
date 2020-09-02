@@ -132,3 +132,70 @@ Hit the end point and fill the db by going to those endpoints (drop them in your
 
 - IT IS KEY TO NOTE, save_image functionality is linked directly to the buckets, the DEV param blocks accidental pushes to the s3 db,
   turn it to False to make it push to s3
+
+(4) You ain't got time to hit these endpoints and gimme that sql query right here
+---------------------------------------------------------------------------------
+- Here's insert statements to run in a brand new database that will fill with enough to run some queries on
+  - INSERT INTO linx_luser(username,password,profile_picture,email,security_level,info,image_index,images_visited,friends,created_at,last_friend_added,time_user_seen,friend_not_to_add) 
+VALUES(
+    'tswag', '123', 'https://linx-images.s3-us-west-2.amazonaws.com/p0', 'tfgh@aol.com', 'user',
+    '{"birthday":"04/24/1992","connectWith":{"ageRange":[23,29],"distance":25,"sameGender":false,"sameInterests":false},"expoPushToken":"","gender":"man","imgUrl":"","interests":[],"isOnboarded":false,"lastReaction":"2020-08-27T03:30:45","location":{"city":"San Jose","state":"CA","zip":"95121"},"name":{"first":"Tommy","last":"Brixton"}}',
+    0,
+    '[]',
+    '[2]',
+    '2020-08-27 03:31:47.212218',
+    '2020-09-02 02:01:15.555931',
+    '2020-09-02 02:01:15.555892',
+    '[]'
+),
+(
+    'rwilliams', '123', 'https://linx-images.s3-us-west-2.amazonaws.com/p0', 'rwilliams@gmail.com', 'user',
+    '{"birthday":"04/24/1991","connectWith":{"ageRange":[24,29],"distance":25,"sameGender":false,"sameInterests":false},"expoPushToken":"","gender":"woman","imgUrl":"","interests":[],"isOnboarded":false,"lastReaction":"2020-08-27T03:30:45","location":{"city":"San Jose","state":"CA","zip":"95121"},"name":{"first":"Rebecca","last":"Williams"}}',
+    0,
+    '[]',
+    '[1,3]',
+    '2020-08-27 03:31:47.212218',
+    '2020-09-02 02:01:15.555931',
+    '2020-09-02 02:01:15.555892',
+    '[]'
+),
+(
+    'bobhope', '123', 'https://linx-images.s3-us-west-2.amazonaws.com/p0', 'bhope@aol.com', 'user',
+    '{"birthday":"05/24/1992","connectWith":{"ageRange":[23,29],"distance":25,"sameGender":false,"sameInterests":false},"expoPushToken":"","gender":"man","imgUrl":"","interests":[],"isOnboarded":false,"lastReaction":"2020-08-27T03:30:45","location":{"city":"San Jose","state":"CA","zip":"95121"},"name":{"first":"Bob","last":"Hope"}}',
+    0,
+    '[]',
+    '[2]',
+    '2020-08-27 03:31:47.212218',
+    '2020-09-02 02:01:15.555931',
+    '2020-09-02 02:01:15.555892',
+    '[]'
+);
+
+INSERT INTO linx_tokenauth(tid,user_id,token,created_at)
+VALUES(
+    1,1,
+    '0afb8e0f-84ba-499c-aa60-b6dae52e2de2',
+    '2020-06-12 09:09:53.214164'
+),
+(
+    2,2,
+    '43985ece-e49d-477f-b843-3a5501799ef7',
+    '2020-06-13 21:05:21.745610'
+),
+(
+    3,3,
+    'cf5ee422-30f5-42c5-b0e8-2ac2592c765f',
+    '2020-06-13 21:06:05.494443'
+);
+
+
+INSERT INTO linx_messages(user_id, other_id, msg, created_at, time_user_seen, users_notified)
+VALUES(
+    2,3,'hello therea','2020-08-27 03:32:52.628336','03:33:02',true
+),
+(
+    2,1,'hello thereb','2020-08-27 03:32:52.628336','03:33:02',true
+),
+(
+    1,2,'hello therec','2020-08-27 03:32:52.628336','03:33:02',true
+);
