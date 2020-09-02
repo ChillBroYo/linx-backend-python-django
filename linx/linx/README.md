@@ -170,8 +170,7 @@ VALUES(
     '2020-09-02 02:01:15.555892',
     '[]'
 );
-
-INSERT INTO linx_tokenauth(tid,user_id,token,created_at)
+- INSERT INTO linx_tokenauth(tid,user_id,token,created_at)
 VALUES(
     1,1,
     '0afb8e0f-84ba-499c-aa60-b6dae52e2de2',
@@ -187,9 +186,7 @@ VALUES(
     'cf5ee422-30f5-42c5-b0e8-2ac2592c765f',
     '2020-06-13 21:06:05.494443'
 );
-
-
-INSERT INTO linx_messages(user_id, other_id, msg, created_at, time_user_seen, users_notified)
+- INSERT INTO linx_messages(user_id, other_id, msg, created_at, time_user_seen, users_notified)
 VALUES(
     2,3,'hello therea','2020-08-27 03:32:52.628336','03:33:02',true
 ),
