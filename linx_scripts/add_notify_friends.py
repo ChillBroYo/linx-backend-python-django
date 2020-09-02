@@ -151,7 +151,7 @@ query = "SELECT DISTINCT a.iid as image_id, a.user_id as a_user, b.user_id as b_
 reaction_results = cursor.execute(query).fetchall()
 
 # Get all needed user info
-query = "SELECT user_id, friends, info, last_friend_added, json_extract(info, '$.connectWith.sameGender') as same_gender,  json_extract(info, '$.gender') as gender FROM linx_luser ORDER BY user_id;"
+query = "SELECT user_id, friends, info, last_friend_added, json_extract(info, '$.connectWith.sameGender') as same_gender,  json_extract(info, '$.gender') as gender, friend_not_to_add as block_list FROM linx_luser ORDER BY user_id;"
 friends_results = cursor.execute(query).fetchall()
 sql_connect.close()
 
@@ -182,6 +182,13 @@ for user in reaction_map:
         if reaction_map[user][matching_user] >= MINIMUM_IMAGES_IN_COMMON:
             friend_combo = (user, matching_user)
             reverse_friend_combo = (matching_user, user)
+
+            # Block list protection
+            blocked_list = friends_results[int(user) - 1][6].split(",")
+            for blocked_id in blocked_list:
+                if blocked_id is matching_user:
+                    continue
+
             if len(friends_to_match) > 1:
 #                if friend_combo in friends_to_match or reverse_friend_combo in friends_to_match:
                 exists = False

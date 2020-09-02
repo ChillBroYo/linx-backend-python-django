@@ -5,6 +5,7 @@ import datetime
 import io
 import boto3
 from django.db.models import Q
+from django.db import connection
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -119,6 +120,45 @@ def is_valid_linx_zip(request):
     return JsonResponse(collected_values, status=200)
 
 
+# DEV Endpoint /delete_account, PROD ENDPOINT /delete-account
+# NOTE This is a soft delete, the account needs to be manually erased
+@csrf_exempt
+def delete_account(request):
+    """Soft deletes the users account, allowing another account to be created under the same username
+        POST Request Args:
+            user_id: the user id of the user that wants to delete their account
+            token: the potentially correct token of the user_id specified
+    """
+    collected_values = {}
+    
+    if request.method != 'POST':
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Wrong HTTP verb"
+        return JsonResponse(collected_values, status=400)
+    
+    uid = request.POST["user_id"]
+    token = request.POST["token"]
+
+    # Check auth
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    if not is_valid:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+
+    change_query = "UPDATE linx_luser SET username = \'{}\' WHERE user_id = {}".format("DELETE ME", uid)
+    with connection.cursor() as cursor:
+        cursor.execute(change_query)
+
+    collected_values["user_id"] = uid
+    collected_values["token"] = token
+    collected_values["executed_query"] = change_query
+
+    LOGGER.info("Delete account request: %v", collected_values)
+    return JsonResponse(collected_values, status=200)
+    
+
+
 # DEV ENDPOINT /remove_friend, PROD ENDPOINT /remove-friend
 @csrf_exempt
 def remove_friend(request):
@@ -140,44 +180,63 @@ def remove_friend(request):
     oid = request.POST["oid"]
     token = request.POST["token"]
 
+    # Check auth
+    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    if not is_valid:
+        collected_values["success"] = False
+        collected_values["errmsg"] = "Invalid Token"
+        return JsonResponse(collected_values, status=400)
+
     user_raw_query = "SELECT friends, friend_not_to_add from linx_luser WHERE user_id = {}".format(uid)
-    other_raw_query = "SELECT friends, friend_not_to_add from linx_luser WHERE user_id = {}".format(uid)
-    user_friendsr = Reactions.objects.raw(user_raw_query)[0][0]
-    user_friendsb = Reactions.objects.raw(user_raw_query)[0][0]
-    other_friendsr = Reactions.objects.raw(other_raw_query)[0][1]
-    other_friendsb = Reactions.objects.raw(other_raw_query)[0][1]
+    other_raw_query = "SELECT friends, friend_not_to_add from linx_luser WHERE user_id = {}".format(oid)
+    with connection.cursor() as cursor:
+        cursor.execute(user_raw_query)
+        values = cursor.fetchall()
+        user_friends = values[0][0]
+        user_blocked = values[0][1]
+
+        cursor.execute(other_raw_query)
+        values = cursor.fetchall()
+        other_friends = values[0][0]
+        other_blocked = values[0][1]
+
+        friendsr = user_friends.replace("[", "").replace("]", "")
+        split_user_friends = friendsr.split(",")
+        split_user_friends.remove(oid)
+        new_user_friends = "[" + ",".join(split_user_friends) + "]"
     
-    friendsr = user_friendsr.replace("[", "").replace("]", "")
-    user_friends = friendsr.split(",")
-    user_friends.remove(oid)
-    new_user_friends = "[" + ",".join(new_user_friends) + "]"
+        block_listr = user_blocked.replace("[", "").replace("]", "")
+        block_list = block_listr.split(",")
+        if block_list is []:
+            block_list = [oid]
+        else:
+            block_list.append(oid)
+        new_user_block = "[" + ",".join(block_list) + "]"
+
+        ofriendsr = other_friends.replace("[", "").replace("]", "")
+        other_friends = ofriendsr.split(",") 
+        other_friends.remove(uid)
+        new_other_friends = "[" + ",".join(other_friends) + "]"
+
+        block_listr2 = other_blocked.replace("[", "").replace("]", "")
+        block_list2 = block_listr2.split(",")
+        if block_list2 is []:
+            block_list2 = [uid]
+        else:
+            block_list2.append(uid)
+        new_other_block = "[" + ",".join(block_list2) + "]"
     
-    block_listr = other_friendsr.replace("[", "").replace("]", "")
-    block_list = block_listr.split(",")
-    block_list.append(oid)
-    new_user_block = "[" + ",".join(block_list) + "]"
+        user_raw_query2 = "UPDATE linx_luser SET friends = \'{}\', friend_not_to_add = \'{}\' WHERE user_id = {}".format(new_user_friends, new_user_block, uid)
+        other_raw_query2 = "UPDATE linx_luser SET friends = \'{}\', friend_not_to_add = \'{}\' WHERE user_id = {}".format(new_other_friends, new_other_block, oid)
 
-    ofriendsr = user_friendsr.replace("[", "").replace("]", "")
-    other_friends = ofriendsr.split(",") 
-    other_friends.remove(oid)
-    new_other_friends = "[" + ",".join(other_friends) + "]"
+        cursor.execute(user_raw_query2)
+        cursor.execute(other_raw_query2)
 
-    block_listr = user_friendsb.replace("[", "").replace("]", "")
-    block_list = block_listr.split(",")
-    block_list.append(uid)
-    new_other_block = "[" + ",".join(block_list) + "]"
-    
-    user_raw_query2 = "UPDATE linx_luser SET friends = {} AND friend_not_to_add = {} WHERE user_id = {}".format(new_user_friends, new_user_block, uid)
-    other_raw_query2 = "UPDATE linx_luser SET friends = {} AND friend_not_to_add = {} WHERE user_id = {}".format(new_other_friends, new_other_block, uid)
-
-    Reactions.objects.raw(user_raw_query2)
-    Reactions.objects.raw(other_raw_query2)
-
-    collected_values["uid"] = uid
-    collected_values["oid"] = oid
-    collected_values["token"] = token
-    collected_values["raw_query_1"] = user_raw_query2
-    collected_values["raw_query_2"] = other_raw_query2
+        collected_values["uid"] = uid
+        collected_values["oid"] = oid
+        collected_values["token"] = token
+        collected_values["raw_query_1"] = user_raw_query2
+        collected_values["raw_query_2"] = other_raw_query2
 
     LOGGER.info("Block user request: %v", collected_values)
     return JsonResponse(collected_values, status=200)

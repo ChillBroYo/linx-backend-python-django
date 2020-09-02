@@ -20,6 +20,8 @@ class LUser(models.Model):
         security_level: the security level of the user
         info: any additonal information stored in JSON format
         created_at: the time the user was created
+        time_user_seen: the last time the user viewed their messages
+        friend_not_to_add: friends that will not be connected with user
     """
     user_id = models.AutoField(primary_key=True)
     username = models.CharField('username', max_length=50, unique=True)
@@ -32,6 +34,7 @@ class LUser(models.Model):
     images_visited = models.TextField(blank=True)
     friends = models.TextField(blank=True)
     last_friend_added = models.DateTimeField(editable=True)
+    time_user_seen = models.DateTimeField(editable=True)
     created_at = models.DateTimeField(default=now, editable=False)
     friend_not_to_add = models.TextField(blank=True)
 
