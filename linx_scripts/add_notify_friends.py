@@ -214,7 +214,6 @@ for user in reaction_map:
                         and is_valid_linx_zip(loaded_info_2["location"]["zip"])
                         and in_same_city(loaded_info_1["location"]["zip"], loaded_info_2["location"]["zip"])
                         and failed_prior_check == False):
-
                         if matching_user not in user_to_friends_to_change[user]:
                             friends_to_match.append(friend_combo)
                             friends_to_match.append(reverse_friend_combo)
