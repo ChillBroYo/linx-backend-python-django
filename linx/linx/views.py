@@ -18,7 +18,7 @@ SUPER_SECURE_STRING = "123"
 LOGGER = logging.getLogger('django')
 
 # Debug param to prevent bad s3 requests
-DEV = False
+DEV = True
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
                        '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
@@ -155,7 +155,7 @@ def delete_account(request):
     collected_values["token"] = token
     collected_values["executed_query"] = change_query
 
-    LOGGER.info("Delete account request: %v", collected_values)
+    LOGGER.info("Delete account request: %s", collected_values)
     return JsonResponse(collected_values, status=200)
     
 
@@ -198,7 +198,7 @@ def remove_friend(request):
                 user_friends = ""
         user_blocked = values[0][1]
         if user_blocked == None:
-                user_blocked == ""
+                user_blocked = ""
 
         cursor.execute(other_raw_query)
         values = cursor.fetchall()
