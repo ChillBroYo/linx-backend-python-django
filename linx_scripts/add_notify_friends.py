@@ -10,7 +10,7 @@ from exponent_server_sdk import PushServerError
 from requests.exceptions import ConnectionError
 from requests.exceptions import HTTPError
 
-TIME_SINCE_LAST_REACTION_MINIMUM = 5
+TIME_SINCE_LAST_REACTION_MINIMUM = 2
 MINIMUM_IMAGES_IN_COMMON = 1
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
@@ -79,6 +79,10 @@ def is_valid_linx_zip(zip_code):
                 return True
     return False
 
+# Send admin message
+def send_admin_message(message):
+    send_push_message("ExponentPushToken[_wZRkENkQed00zcIOXlouK]", message)
+
 # Does not check if the zip_codes exist, run is_valid first
 def in_same_city(first_zip, second_zip):
     for region in VALID_REGIONS:
@@ -108,14 +112,14 @@ def send_push_message(token, message, extra=None):
        #         'errors': exc.errors,
        #         'response_data': exc.response_data,
        #     })
-        raise
+        send_admin_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
     except (ConnectionError, HTTPError) as exc:
         print("issue2")
         # Encountered some Connection or HTTP error - retry a few times in
         # case it is transient.
 #        rollbar.report_exc_info(
 #            extra_data={'token': token, 'message': message, 'extra': extra})
-        raise self.retry(exc=exc)
+        send_admin_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
 
     try:
         # We got a response back, but we don't know whether it's an error yet.
@@ -130,7 +134,7 @@ def send_push_message(token, message, extra=None):
         PushToken.objects.filter(token=token).update(active=False)
     except PushResponseError as exc:
         # Encountered some other per-notification error.
-        print("error")
+        print("error, invalid token")
 #        rollbar.report_exc_info(
 #            extra_data={
 #                'token': token,
@@ -138,7 +142,7 @@ def send_push_message(token, message, extra=None):
 #                'extra': extra,
 #                'push_response': exc.push_response._asdict(),
 #            })
-        raise self.retry(exc=exc)
+        send_admin_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
 
 
 
@@ -184,10 +188,11 @@ for user in reaction_map:
             reverse_friend_combo = (matching_user, user)
 
             # Block list protection
-            blocked_list = friends_results[int(user) - 1][6].split(",")
-            for blocked_id in blocked_list:
-                if blocked_id is matching_user:
-                    continue
+            if friends_results[int(user) - 1] != None and friends_results[int(user) - 1][6] != None:
+                blocked_list = friends_results[int(user) - 1][6].split(",")
+                for blocked_id in blocked_list:
+                    if blocked_id is matching_user:
+                        continue
 
             if len(friends_to_match) > 1:
 #                if friend_combo in friends_to_match or reverse_friend_combo in friends_to_match:
@@ -222,6 +227,7 @@ for user in reaction_map:
                     friends_to_match.append(friend_combo)
                     friends_to_match.append(reverse_friend_combo)
 
+
 print("friends to match {}".format(friends_to_match))
 
 # create new mapping of current users friends
@@ -236,7 +242,6 @@ for combo in friends_to_match:
     new_user_friends[str(combo[0])].append(combo[1])
 
 print("new_user_friends {}".format(new_user_friends))
-
 print("About to execute commands at {}".format(str(datetime.datetime.now())))
 sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.sqlite3')
 cursor = sql_connect.cursor()
@@ -251,18 +256,22 @@ for user_id in new_user_friends:
     last_friend_elapsed = datetime.datetime.now() - last_friend_time
     if last_reaction_elapsed.days < TIME_SINCE_LAST_REACTION_MINIMUM and last_friend_elapsed.days > 1:
         ones_to_actually_notify.append(user_id)
-        query = "UPDATE linx_luser SET friends=\'{}\' last_friend_added={} WHERE user_id = {}".format(new_user_friends[user_id], datetime.datetime.now(), user_id)
+        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(new_user_friends[user_id])), datetime.datetime.now(), user_id)
         print("About to run: {}".format(query))
         cursor.execute(query)
         sql_connect.commit()
-
+    else:
+        pass
+        #print("last_reaction_elapsed = {} - {} AND last_friend_elapses = {} - {}".format(datetime.datetime.now(), last_reaction_time, datetime.datetime.now(), last_friend_time))
+        #print("Either issue with user_id {}: time elapsed: {} or last friend days: {}".format(user_id, str(last_reaction_elapsed), str(last_friend_elapsed)))
 sql_connect.close()
 
+send_admin_message("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
 
 for user_id in ones_to_actually_notify:
-    print("About to send notifications for user {}".format(user_id))
     loaded_info = json.loads(friends_results[int(user_id) - 1][2])
     expo_push_token = loaded_info["expoPushToken"]
+    print("About to send notifications for user {} at token {}".format(user_id, expo_push_token))
     data = {"user_id": "{}".format(user_id),
          "timestamp": str(datetime.datetime.now()),
          "type": "friends"
