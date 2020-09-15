@@ -1,7 +1,8 @@
 """Webcall views dealing with all backend functionality"""
 import uuid
 import logging
-import datetime
+from django.utils import timezone
+import pytz
 import io
 import boto3
 from django.db.models import Q
@@ -140,7 +141,7 @@ def delete_account(request):
     token = request.POST["token"]
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -181,7 +182,7 @@ def remove_friend(request):
     token = request.POST["token"]
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -193,12 +194,20 @@ def remove_friend(request):
         cursor.execute(user_raw_query)
         values = cursor.fetchall()
         user_friends = values[0][0]
+        if user_friends == None:
+                user_friends = ""
         user_blocked = values[0][1]
+        if user_blocked == None:
+                user_blocked == ""
 
         cursor.execute(other_raw_query)
         values = cursor.fetchall()
         other_friends = values[0][0]
+        if other_friends == None:
+                other_friends = ""
         other_blocked = values[0][1]
+        if other_blocked == None:
+                other_blocked = ""
 
         friendsr = user_friends.replace("[", "").replace("]", "")
         split_user_friends = friendsr.split(",")
@@ -266,7 +275,7 @@ def common_images_between_users(request):
     oid = collected_values["oid"]
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -345,7 +354,7 @@ def sign_up(request):
     # Create the user, with no images visited or friends
     new_user = LUser.create_luser(username=username, email=email, profile_picture=profile_picture,
                                   image_index=0, images_visited="[]", password=password,
-                                  friends="[]", security_level=security_level, last_friend_added=datetime.datetime.now(),
+                                  friends="[]", security_level=security_level, last_friend_added=timezone.now(),
                                   info=info)
 
     # Create new token for user in TokenAuth db
@@ -426,7 +435,7 @@ def add_message(request):
     msg = request.POST['msg']
 
     # Check if token is valid, if not, return an error
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -463,7 +472,7 @@ def get_conversation_list(request):
     limit = int(request.GET['limit']) # Force a limiter to see how many users to get
 
     # Check if the token is valid
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -529,7 +538,7 @@ def get_conversation(request):
         change_user_seen = True
 
     # Check if token is valid
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -544,7 +553,7 @@ def get_conversation(request):
     test_list = []
     for message in message_query_set:
         if change_user_seen:
-            message.time_user_seen = datetime.datetime.now()
+            message.time_user_seen = timezone.now()
             message.save()
         test_list.append(message.get_map())
 
@@ -594,7 +603,7 @@ def update_profile(request):
     info = request.POST.get('info')
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -676,7 +685,7 @@ def check_auth(uid, token, ts_check):
     if not token_row:
         return False, None
 
-    difference = ts_check - datetime.datetime.now()
+    difference = ts_check - timezone.now()
 
     if difference.days > 90:
         return False, token_row[0].token
@@ -770,7 +779,7 @@ def save_image(request):
         prefix = "reference/"
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(user_id, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(user_id, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -833,7 +842,7 @@ def react_to_image(request):
     reaction_type = request.POST['reaction_type']
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
