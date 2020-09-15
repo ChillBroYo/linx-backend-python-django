@@ -141,7 +141,7 @@ def delete_account(request):
     token = request.POST["token"]
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
@@ -182,7 +182,7 @@ def remove_friend(request):
     token = request.POST["token"]
 
     # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, datetime.datetime.now())
+    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
     if not is_valid:
         collected_values["success"] = False
         collected_values["errmsg"] = "Invalid Token"
