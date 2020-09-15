@@ -30,5 +30,7 @@ urlpatterns = [
     path('save_image/', views.save_image, name='saveImage'),
     path('react_to_image/', views.react_to_image, name='reactToImage'),
     path('is_valid_linx_zip/', views.is_valid_linx_zip, name='isValidLinxZip'),
-    path('common_images_between_users/', views.common_images_between_users, name='commonImagesBetweenUsers')
+    path('common_images_between_users/', views.common_images_between_users, name='commonImagesBetweenUsers'),
+    path('remove_friend/', views.remove_friend, name='removeFriend'),
+    path('delete_account/', views.delete_account, name='deleteAccount')
 ]

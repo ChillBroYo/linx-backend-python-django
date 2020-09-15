@@ -11,6 +11,7 @@ from requests.exceptions import ConnectionError
 from requests.exceptions import HTTPError
 
 TIME_SINCE_LAST_REACTION_MINIMUM = 5
+MINIMUM_IMAGES_IN_COMMON = 1
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
                        '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
@@ -150,7 +151,7 @@ query = "SELECT DISTINCT a.iid as image_id, a.user_id as a_user, b.user_id as b_
 reaction_results = cursor.execute(query).fetchall()
 
 # Get all needed user info
-query = "SELECT user_id, friends, info, last_friend_added FROM linx_luser ORDER BY user_id;"
+query = "SELECT user_id, friends, info, last_friend_added, json_extract(info, '$.connectWith.sameGender') as same_gender,  json_extract(info, '$.gender') as gender, friend_not_to_add as block_list FROM linx_luser ORDER BY user_id;"
 friends_results = cursor.execute(query).fetchall()
 sql_connect.close()
 
@@ -178,9 +179,16 @@ print("user to friends to change {}".format(user_to_friends_to_change))
 friends_to_match = []
 for user in reaction_map:
     for matching_user in reaction_map[user]:
-        if reaction_map[user][matching_user] > 4:
+        if reaction_map[user][matching_user] >= MINIMUM_IMAGES_IN_COMMON:
             friend_combo = (user, matching_user)
             reverse_friend_combo = (matching_user, user)
+
+            # Block list protection
+            blocked_list = friends_results[int(user) - 1][6].split(",")
+            for blocked_id in blocked_list:
+                if blocked_id is matching_user:
+                    continue
+
             if len(friends_to_match) > 1:
 #                if friend_combo in friends_to_match or reverse_friend_combo in friends_to_match:
                 exists = False
@@ -191,6 +199,12 @@ for user in reaction_map:
                         break
 
                 if exists == False:
+                    failed_prior_check = False
+
+                    # Ensure users want to match with the new friends gender
+                    if friends_results[int(user) - 1][4] != 0 or friends_results[int(matching_user) - 1][4] != 0:
+                        if friends_results[int(user) - 1][5] != friends_results[int(user) - 1][5]:
+                            failed_prior_check = True
 
                     # Ensure users are within the correct zip codes available
                     loaded_info_1 = json.loads(friends_results[int(user) - 1][2])
@@ -198,8 +212,8 @@ for user in reaction_map:
                     if (loaded_info_1["location"].get("zip") != None and loaded_info_2["location"].get("zip") != None
                         and is_valid_linx_zip(loaded_info_1["location"]["zip"])
                         and is_valid_linx_zip(loaded_info_2["location"]["zip"])
-                        and in_same_city(loaded_info_1["location"]["zip"], loaded_info_2["location"]["zip"])):
-                        
+                        and in_same_city(loaded_info_1["location"]["zip"], loaded_info_2["location"]["zip"])
+                        and failed_prior_check == False):
                         if matching_user not in user_to_friends_to_change[user]:
                             friends_to_match.append(friend_combo)
                             friends_to_match.append(reverse_friend_combo)
@@ -223,7 +237,7 @@ for combo in friends_to_match:
 
 print("new_user_friends {}".format(new_user_friends))
 
-print("About to execute commands")
+print("About to execute commands at {}".format(str(datetime.datetime.now())))
 sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.sqlite3')
 cursor = sql_connect.cursor()
 
@@ -253,4 +267,4 @@ for user_id in ones_to_actually_notify:
          "timestamp": str(datetime.datetime.now()),
          "type": "friends"
          }
-    send_push_message(expo_push_token, "You have a new friend! \uD83D\uDE00", data) 
+    send_push_message(expo_push_token, "You have a new friend! \uD83D\uDE00", data)
