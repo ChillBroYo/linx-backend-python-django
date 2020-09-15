@@ -194,12 +194,20 @@ def remove_friend(request):
         cursor.execute(user_raw_query)
         values = cursor.fetchall()
         user_friends = values[0][0]
+        if user_friends == None:
+                user_friends = ""
         user_blocked = values[0][1]
+        if user_blocked == None:
+                user_blocked == ""
 
         cursor.execute(other_raw_query)
         values = cursor.fetchall()
         other_friends = values[0][0]
+        if other_friends == None:
+                other_friends = ""
         other_blocked = values[0][1]
+        if other_blocked == None:
+                other_blocked = ""
 
         friendsr = user_friends.replace("[", "").replace("]", "")
         split_user_friends = friendsr.split(",")
