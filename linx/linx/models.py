@@ -33,8 +33,8 @@ class LUser(models.Model):
     image_index = models.IntegerField(auto_created=False)
     images_visited = models.TextField(blank=True)
     friends = models.TextField(blank=True)
-    last_friend_added = models.DateTimeField(editable=True)
-    time_user_seen = models.DateTimeField(editable=True)
+    last_friend_added = models.DateTimeField(default=now, editable=True)
+    time_user_seen = models.DateTimeField(default=None, editable=True, null=True)
     created_at = models.DateTimeField(default=now, editable=False)
     friend_not_to_add = models.TextField(blank=True)
 

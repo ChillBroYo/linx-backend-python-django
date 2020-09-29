@@ -2,6 +2,7 @@ import sqlite3
 import requests
 import datetime
 import json
+import sys
 from exponent_server_sdk import DeviceNotRegisteredError
 from exponent_server_sdk import PushClient
 from exponent_server_sdk import PushMessage
@@ -10,7 +11,7 @@ from exponent_server_sdk import PushServerError
 from requests.exceptions import ConnectionError
 from requests.exceptions import HTTPError
 
-TIME_SINCE_LAST_REACTION_MINIMUM = 5
+TIME_SINCE_LAST_REACTION_MINIMUM = 2
 MINIMUM_IMAGES_IN_COMMON = 1
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
@@ -79,6 +80,10 @@ def is_valid_linx_zip(zip_code):
                 return True
     return False
 
+# Send admin message
+def send_admin_message(message):
+    send_push_message("ExponentPushToken[_wZRkENkQed00zcIOXlouK]", message)
+
 # Does not check if the zip_codes exist, run is_valid first
 def in_same_city(first_zip, second_zip):
     for region in VALID_REGIONS:
@@ -108,14 +113,14 @@ def send_push_message(token, message, extra=None):
        #         'errors': exc.errors,
        #         'response_data': exc.response_data,
        #     })
-        raise
+        send_admin_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
     except (ConnectionError, HTTPError) as exc:
         print("issue2")
         # Encountered some Connection or HTTP error - retry a few times in
         # case it is transient.
 #        rollbar.report_exc_info(
 #            extra_data={'token': token, 'message': message, 'extra': extra})
-        raise self.retry(exc=exc)
+        send_admin_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
 
     try:
         # We got a response back, but we don't know whether it's an error yet.
@@ -130,7 +135,7 @@ def send_push_message(token, message, extra=None):
         PushToken.objects.filter(token=token).update(active=False)
     except PushResponseError as exc:
         # Encountered some other per-notification error.
-        print("error")
+        print("error, invalid token")
 #        rollbar.report_exc_info(
 #            extra_data={
 #                'token': token,
@@ -138,7 +143,7 @@ def send_push_message(token, message, extra=None):
 #                'extra': extra,
 #                'push_response': exc.push_response._asdict(),
 #            })
-        raise self.retry(exc=exc)
+        send_admin_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
 
 
 
@@ -167,6 +172,8 @@ for row in reaction_results:
         else:
             reaction_map[row[1]][row[2]] += 1
 
+print("reaction_map {}".format(reaction_map))
+
 # Create map of current user friends
 user_to_friends_to_change = {}
 for row in friends_results:
@@ -180,14 +187,29 @@ friends_to_match = []
 for user in reaction_map:
     for matching_user in reaction_map[user]:
         if reaction_map[user][matching_user] >= MINIMUM_IMAGES_IN_COMMON:
+
             friend_combo = (user, matching_user)
             reverse_friend_combo = (matching_user, user)
 
+            # Get actual friends_results object
+            user_obj = []
+            matching_obj = []
+            for user_chunk in friends_results:
+                if int(user_chunk[0]) is int(user):
+                    user_obj = user_chunk
+                    break
+
+            for matching_chunk in friends_results:
+                if int(matching_chunk[0]) is int(matching_user):
+                    matching_obj = user_chunk
+                    break
+
             # Block list protection
-            blocked_list = friends_results[int(user) - 1][6].split(",")
-            for blocked_id in blocked_list:
-                if blocked_id is matching_user:
-                    continue
+            if user_obj[6] != None:
+                blocked_list = user_obj[6].split(",")
+                for blocked_id in blocked_list:
+                    if blocked_id is matching_user:
+                        continue
 
             if len(friends_to_match) > 1:
 #                if friend_combo in friends_to_match or reverse_friend_combo in friends_to_match:
@@ -202,68 +224,78 @@ for user in reaction_map:
                     failed_prior_check = False
 
                     # Ensure users want to match with the new friends gender
-                    if friends_results[int(user) - 1][4] != 0 or friends_results[int(matching_user) - 1][4] != 0:
-                        if friends_results[int(user) - 1][5] != friends_results[int(user) - 1][5]:
+                    if user_obj[4] != 0 or matching_obj[4] != 0:
+                        if user_obj[5] != matching_obj[5]:
                             failed_prior_check = True
 
                     # Ensure users are within the correct zip codes available
-                    loaded_info_1 = json.loads(friends_results[int(user) - 1][2])
-                    loaded_info_2 = json.loads(friends_results[int(matching_user) - 1][2])
+                    loaded_info_1 = json.loads(user_obj[2])
+                    loaded_info_2 = json.loads(matching_obj[2])
                     if (loaded_info_1["location"].get("zip") != None and loaded_info_2["location"].get("zip") != None
                         and is_valid_linx_zip(loaded_info_1["location"]["zip"])
                         and is_valid_linx_zip(loaded_info_2["location"]["zip"])
                         and in_same_city(loaded_info_1["location"]["zip"], loaded_info_2["location"]["zip"])
                         and failed_prior_check == False):
-
                         if matching_user not in user_to_friends_to_change[user]:
                             friends_to_match.append(friend_combo)
                             friends_to_match.append(reverse_friend_combo)
             else:
+                print("Matching user {} not in {} which has user {}".format(matching_user, user_to_friends_to_change[user], user))
                 if matching_user not in user_to_friends_to_change[user]:
                     friends_to_match.append(friend_combo)
                     friends_to_match.append(reverse_friend_combo)
 
+
 print("friends to match {}".format(friends_to_match))
+
+user_mapping = {}
+for user_chunk in friends_results:
+    user_mapping[user_chunk[0]] = user_chunk
 
 # create new mapping of current users friends
 new_user_friends = {}
 for combo in friends_to_match:
 
     # create dictionary of user_id to list
-    new_user_friends[str(combo[0])] = friends_results[int(combo[0]) - 1][1].strip('][').split(',')
+    new_user_friends[str(combo[0])] = user_mapping[int(combo[0])][1].strip('][').split(',')
     if new_user_friends[str(combo[0])][0] == "":
         new_user_friends[str(combo[0])].remove("")
 
     new_user_friends[str(combo[0])].append(combo[1])
 
 print("new_user_friends {}".format(new_user_friends))
-
 print("About to execute commands at {}".format(str(datetime.datetime.now())))
 sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.sqlite3')
 cursor = sql_connect.cursor()
 
 ones_to_actually_notify = []
 for user_id in new_user_friends:
-    loaded_info = json.loads(friends_results[int(user_id) - 1][2])
-    print(loaded_info["lastReaction"])
+    loaded_info = json.loads(user_mapping[int(user_id)][2])
     last_reaction_time = datetime.datetime.strptime(loaded_info["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
-    last_friend_time = datetime.datetime.strptime(friends_results[int(user_id) - 1][3], "%Y-%m-%d %H:%M:%S.%f")
+    last_friend_time = datetime.datetime.strptime(user_mapping[int(user_id)][3], "%Y-%m-%d %H:%M:%S.%f")
     last_reaction_elapsed = datetime.datetime.now() - last_reaction_time
     last_friend_elapsed = datetime.datetime.now() - last_friend_time
-    if last_reaction_elapsed.days < TIME_SINCE_LAST_REACTION_MINIMUM and last_friend_elapsed.days > 1:
+    print("Time since {} last reacted = {} and the last friend they recieved was {} ago".format(user_id, last_reaction_elapsed.days, last_friend_elapsed.days))
+    if last_reaction_elapsed.days <= TIME_SINCE_LAST_REACTION_MINIMUM and last_friend_elapsed.days > 1:
         ones_to_actually_notify.append(user_id)
-        query = "UPDATE linx_luser SET friends=\'{}\' last_friend_added={} WHERE user_id = {}".format(new_user_friends[user_id], datetime.datetime.now(), user_id)
+        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(new_user_friends[user_id])), datetime.datetime.now(), user_id)
         print("About to run: {}".format(query))
         cursor.execute(query)
         sql_connect.commit()
-
+    else:
+        pass
+        #print("last_reaction_elapsed = {} - {} AND last_friend_elapses = {} - {}".format(datetime.datetime.now(), last_reaction_time, datetime.datetime.now(), last_friend_time))
+        #print("Either issue with user_id {}: time elapsed: {} or last friend days: {}".format(user_id, str(last_reaction_elapsed), str(last_friend_elapsed)))
 sql_connect.close()
 
+print("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
+print("Actually notifying {}".format(ones_to_actually_notify))
+send_admin_message("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
 
 for user_id in ones_to_actually_notify:
-    print("About to send notifications for user {}".format(user_id))
-    loaded_info = json.loads(friends_results[int(user_id) - 1][2])
+    loaded_info = json.loads(user_mapping[int(user_id)][2])
     expo_push_token = loaded_info["expoPushToken"]
+    print("About to send notifications for user {} at token {}".format(user_id, expo_push_token))
     data = {"user_id": "{}".format(user_id),
          "timestamp": str(datetime.datetime.now()),
          "type": "friends"
