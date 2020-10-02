@@ -80,9 +80,10 @@ def is_valid_linx_zip(zip_code):
                 return True
     return False
 
-# Send admin message
-def send_admin_message(message):
+# Send admins message
+def send_admins_message(message):
     send_push_message("ExponentPushToken[_wZRkENkQed00zcIOXlouK]", message)
+    send_push_message("ExponentPushToken[mmtVuJODz-yuBsxnY7WtSV]", message)
 
 # Does not check if the zip_codes exist, run is_valid first
 def in_same_city(first_zip, second_zip):
@@ -113,14 +114,14 @@ def send_push_message(token, message, extra=None):
        #         'errors': exc.errors,
        #         'response_data': exc.response_data,
        #     })
-        send_admin_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
+        send_admins_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
     except (ConnectionError, HTTPError) as exc:
         print("issue2")
         # Encountered some Connection or HTTP error - retry a few times in
         # case it is transient.
 #        rollbar.report_exc_info(
 #            extra_data={'token': token, 'message': message, 'extra': extra})
-        send_admin_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
+        send_admins_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
 
     try:
         # We got a response back, but we don't know whether it's an error yet.
@@ -143,7 +144,7 @@ def send_push_message(token, message, extra=None):
 #                'extra': extra,
 #                'push_response': exc.push_response._asdict(),
 #            })
-        send_admin_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
+        send_admins_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
 
 
 
@@ -290,7 +291,7 @@ sql_connect.close()
 
 print("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
 print("Actually notifying {}".format(ones_to_actually_notify))
-send_admin_message("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
+send_admins_message("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
 
 for user_id in ones_to_actually_notify:
     loaded_info = json.loads(user_mapping[int(user_id)][2])
