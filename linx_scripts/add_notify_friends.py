@@ -14,9 +14,10 @@ from requests.exceptions import HTTPError
 from dateutil.relativedelta import relativedelta
 
 BLOCK_USERS_WITHOUT_PROFILE_PICTURES_FROM_MATCHING_ONES_THAT_DO = False
+HOW_MANY_DAYS_BEFORE_MATCH = 1
 TIME_SINCE_LAST_REACTION_MINIMUM = 5
 MINIMUM_IMAGES_IN_COMMON = 1
-SQL_DATABASE_LOCATION_FILE = '/mnt/c/Users/Samson Tse/Projects/linx-backend-python-django/linx_scripts/db.sqlite3'
+SQL_DATABASE_LOCATION_FILE = '/home/ubuntu/linx-backend-python-django/linx/db.sqlite3'
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
                        '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
@@ -96,6 +97,7 @@ def is_valid_linx_zip(zip_code):
 # Send admin message
 def send_admin_message(message):
     send_push_message("ExponentPushToken[_wZRkENkQed00zcIOXlouK]", message)
+    send_push_message("ExponentPushToken[mmtVuJODz-yuBsxnY7WtSV]", message)
 
 # Does not check if the zip_codes exist, run is_valid first
 def in_same_city(first_zip, second_zip):
@@ -118,21 +120,11 @@ def send_push_message(token, message, extra=None):
         print("issue1")
         print("{} ||| {} ||| {} ||| {}".format(message, extra, exc.errors, exc.response_data))
         # Encountered some likely formatting/validation error.
-       # rollbar.report_exc_info(
-       #     extra_data={
-       #         'token': token,
-       #         'message': message,
-       #         'extra': extra,
-       #         'errors': exc.errors,
-       #         'response_data': exc.response_data,
-       #     })
         send_admin_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
     except (ConnectionError, HTTPError) as exc:
         print("issue2")
         # Encountered some Connection or HTTP error - retry a few times in
         # case it is transient.
-#        rollbar.report_exc_info(
-#            extra_data={'token': token, 'message': message, 'extra': extra})
         send_admin_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
 
     try:
@@ -149,13 +141,6 @@ def send_push_message(token, message, extra=None):
     except PushResponseError as exc:
         # Encountered some other per-notification error.
         print("error, invalid token")
-#        rollbar.report_exc_info(
-#            extra_data={
-#                'token': token,
-#                'message': message,
-#                'extra': extra,
-#                'push_response': exc.push_response._asdict(),
-#            })
         send_admin_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
 
 
@@ -231,8 +216,8 @@ print("-----")
 
 
 # Determine which friends are above the threshold for minimum "friendliness"
-friends_to_match_map = {}
-friends_to_match = []
+friends_to_match = {}
+ones_to_actually_notify = []
 for user in reaction_map:
     for other_user in reaction_map[user]:
         # Helper name
@@ -308,70 +293,56 @@ for user in reaction_map:
 
         print("Users {} and {} are not in their others friends list: {} - {}".format(user, other_user, users_exisitng_friends[user], users_exisitng_friends[other_user]))
 
-        if friends_to_match_map.get(user) == None and friends_to_match_map.get(other_user) == None:
-            friends_to_match_map[user] = other_user
-            print("Users {} and {} have a chance at getting matched".format(user, other_user))
+        last_user_reaction_time = datetime.datetime.strptime(json.loads(user_obj[2])["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
+        last_user_friend_time = datetime.datetime.strptime(user_obj[3], "%Y-%m-%d %H:%M:%S.%f")
+        last_user_reaction_elapsed = datetime.datetime.now() - last_user_reaction_time
+        last_user_friend_elapsed = datetime.datetime.now() - last_user_friend_time
 
-        last_reaction_time = datetime.datetime.strptime(loaded_info["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
-        last_friend_time = datetime.datetime.strptime(user_mapping[int(user_id)][3], "%Y-%m-%d %H:%M:%S.%f")
-        last_reaction_elapsed = datetime.datetime.now() - last_reaction_time
-        last_friend_elapsed = datetime.datetime.now() - last_friend_time
-        print("Time since {} last reacted = {} and the last friend they recieved was {} ago".format(user_id, last_reaction_elapsed.days, last_friend_elapsed.days))
-        if last_reaction_elapsed.days <= TIME_SINCE_LAST_REACTION_MINIMUM and last_friend_elapsed.days > 1:
+        last_other_user_reaction_time = datetime.datetime.strptime(json.loads(other_user_obj[2])["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
+        last_other_user_friend_time = datetime.datetime.strptime(other_user_obj[3], "%Y-%m-%d %H:%M:%S.%f")
+        last_other_user_reaction_elapsed = datetime.datetime.now() - last_other_user_reaction_time
+        last_other_user_friend_elapsed = datetime.datetime.now() - last_other_user_friend_time
         
+        print("Time since user {} last reacted = {} days and the last friend they recieved was {} days ago".format(user_obj[0], last_user_reaction_elapsed.days, last_user_friend_elapsed.days))
+        print("Time since other user {} last reacted = {} days and the last friend they recieved was {} days ago".format(other_user_obj[0], last_other_user_reaction_elapsed.days, last_other_user_friend_elapsed.days))
+        if last_user_reaction_elapsed.days >= TIME_SINCE_LAST_REACTION_MINIMUM or last_user_friend_elapsed.days < HOW_MANY_DAYS_BEFORE_MATCH or \
+                last_other_user_reaction_elapsed.days >= TIME_SINCE_LAST_REACTION_MINIMUM or last_other_user_friend_elapsed.days < HOW_MANY_DAYS_BEFORE_MATCH:
+            continue
+        
+        print("Users {} and {} have passed the time check".format(user, other_user,))
 
+        if friends_to_match.get(user) != None or friends_to_match.get(other_user) != None:
+            continue
 
-print("friends to match {}".format(friends_to_match))
+        friends_to_match[user] = True
+        friends_to_match[other_user] = True
+        print("New friends to match list {}".format(friends_to_match))
+        print("Users {} and {} have passed the 2nd friend check, are about to be matched, the current user and other users friend list and are being added to notify list".format(user, other_user))
+        ones_to_actually_notify.append(user)
+        users_exisitng_friends[user].append(other_user)
+        ones_to_actually_notify.append(other_user)
+        users_exisitng_friends[other_user].append(user)
 
-user_mapping = {}
-for user_chunk in friends_results:
-    user_mapping[user_chunk[0]] = user_chunk
-
-# create new mapping of current users friends
-new_user_friends = {}
-for combo in friends_to_match:
-
-    # create dictionary of user_id to list
-
-    new_user_friends[str(combo[0])] = user_mapping[int(combo[0])][1].strip('][').split(',')
-    if new_user_friends[str(combo[0])][0] == "":
-        new_user_friends[str(combo[0])].remove("")
-
-    new_user_friends[str(combo[0])].append(combo[1])
-
-print("new_user_friends {}".format(new_user_friends))
-print("About to execute commands at {}".format(str(datetime.datetime.now())))
-sql_connect = sqlite3.connect(SQL_DATABASE_LOCATION_FILE)
-cursor = sql_connect.cursor()
-
-ones_to_actually_notify = []
-for user_id in new_user_friends:
-    loaded_info = json.loads(user_mapping[int(user_id)][2])
-    last_reaction_time = datetime.datetime.strptime(loaded_info["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
-    last_friend_time = datetime.datetime.strptime(user_mapping[int(user_id)][3], "%Y-%m-%d %H:%M:%S.%f")
-    last_reaction_elapsed = datetime.datetime.now() - last_reaction_time
-    last_friend_elapsed = datetime.datetime.now() - last_friend_time
-    print("Time since {} last reacted = {} and the last friend they recieved was {} ago".format(user_id, last_reaction_elapsed.days, last_friend_elapsed.days))
-    if last_reaction_elapsed.days <= TIME_SINCE_LAST_REACTION_MINIMUM and last_friend_elapsed.days > 1:
-        ones_to_actually_notify.append(user_id)
-        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(new_user_friends[user_id])), datetime.datetime.now(), user_id)
+        print("About to execute commands at {}".format(str(datetime.datetime.now())))
+        sql_connect = sqlite3.connect(SQL_DATABASE_LOCATION_FILE)
+        cursor = sql_connect.cursor()
+        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(users_exisitng_friends[user])), datetime.datetime.now(), user)
         print("About to run: {}".format(query))
-        #cursor.execute(query)
-        #sql_connect.commit()
-    else:
-        pass
-        #print("last_reaction_elapsed = {} - {} AND last_friend_elapses = {} - {}".format(datetime.datetime.now(), last_reaction_time, datetime.datetime.now(), last_friend_time))
-        #print("Either issue with user_id {}: time elapsed: {} or last friend days: {}".format(user_id, str(last_reaction_elapsed), str(last_friend_elapsed)))
-sql_connect.close()
-
-sys.exit()
+        cursor.execute(query)
+        sql_connect.commit()
+        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(users_exisitng_friends[other_user])), datetime.datetime.now(), other_user)
+        print("About to run: {}".format(query))
+        cursor.execute(query)
+        sql_connect.commit()
+        sql_connect.close()
 
 print("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
 print("Actually notifying {}".format(ones_to_actually_notify))
-send_admin_message("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
+send_admin_message("About to send notifications to {} out of a total {} users: {}".format(len(ones_to_actually_notify), len(friends_results), ones_to_actually_notify))
 
 for user_id in ones_to_actually_notify:
-    loaded_info = json.loads(user_mapping[int(user_id)][2])
+    user_obj = user_info[int(user_id)]
+    loaded_info = json.loads(user_obj[2])
     expo_push_token = loaded_info["expoPushToken"]
     print("About to send notifications for user {} at token {}".format(user_id, expo_push_token))
     data = {"user_id": "{}".format(user_id),
@@ -379,3 +350,5 @@ for user_id in ones_to_actually_notify:
          "type": "friends"
          }
     send_push_message(expo_push_token, "You have a new friend! \uD83D\uDE00", data)
+
+print("#####")
