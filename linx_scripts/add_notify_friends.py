@@ -3,6 +3,7 @@ import requests
 import datetime
 import json
 import sys
+import dateutil.parser
 from exponent_server_sdk import DeviceNotRegisteredError
 from exponent_server_sdk import PushClient
 from exponent_server_sdk import PushMessage
@@ -10,9 +11,13 @@ from exponent_server_sdk import PushResponseError
 from exponent_server_sdk import PushServerError
 from requests.exceptions import ConnectionError
 from requests.exceptions import HTTPError
+from dateutil.relativedelta import relativedelta
 
-TIME_SINCE_LAST_REACTION_MINIMUM = 2
+BLOCK_USERS_WITHOUT_PROFILE_PICTURES_FROM_MATCHING_ONES_THAT_DO = False
+HOW_MANY_DAYS_BEFORE_MATCH = 1
+TIME_SINCE_LAST_REACTION_MINIMUM = 5
 MINIMUM_IMAGES_IN_COMMON = 1
+SQL_DATABASE_LOCATION_FILE = '/home/ubuntu/linx-backend-python-django/linx/db.sqlite3'
 
 ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
                        '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
@@ -43,8 +48,6 @@ SONOMA_COUNTY_ZIPS = ['95409', '95412', '95416', '95419', '95421', '95425', '954
                       '95446', '95445', '95448', '95450', '95452', '95462', '95465', '95472', '95471', '95476', '94515', '95486', '95492',
                       '95497', '94923', '94922', '94926', '94928', '94931', '94951', '94952', '94954', '94972', '95402', '95401', '95404',
                       '95403', '95405', '95407']
-BAY_AREA_REGIONS = [ALAMEDA_COUNTY_ZIPS, CONTRA_COASTA_COUNTY_ZIPS, MARIN_COUNTY_ZIPS, NAPA_COUNTY_ZIPS, SAN_FRANCISO_COUNTY_ZIPS,
-                    SAN_MATEO_COUNTY_ZIPS, SANTA_CLARA_COUNTY_ZIPS, SOLANO_COUNTY_ZIPS]
 LA_COUNTY_ZIPS = ['90895', '91001', '91006', '91007', '91011', '91010', '91016', '91020', '91017', '93510', '91023', '91024', '91030', '91040',
                   '91043', '91042', '91101', '91103', '91105', '93534', '91104', '93532', '91107', '93536', '91106', '93535', '91108', '93539',
                   '93543', '93544', '91123', '93551', '93550', '91125', '93553', '93552', '91182', '93563', '91189', '91202', '91201', '93591',
@@ -68,10 +71,21 @@ LA_COUNTY_ZIPS = ['90895', '91001', '91006', '91007', '91011', '91010', '91016',
                   '90601', '90603', '90602', '90605', '90604', '90606', '90631', '90639', '90638', '90650', '90640', '90660', '90670', '90702',
                   '90701', '90704', '90703', '90706', '90710', '90713', '90712', '90715', '90717', '90716', '90731', '90723', '90733', '90732',
                   '90745', '90744', '90747', '90746', '90755', '90803', '90802', '90805', '90804', '90807', '90806', '90808', '90813', '90810',
-                  '90815', '90814', '90840']
-LA_REGIONS = [LA_COUNTY_ZIPS]
+                  '90815', '90814', '90840', '91710']
+ATLANTA_AREA = ['30301', '30302', '30303', '30304', '30305', '30306', '30307', '30308', '30309', '30310', '30311', '30312', '30313', '30314', 
+                '30315', '30316', '30317', '30318', '30319', '30320', '30321', '30322', '30324', '30325', '30326', '30327', '30328', '30329',
+                '30331', '30332', '30333', '30334', '30336', '30337', '30338', '30339', '30340', '30341', '30342', '30343', '30344', '30345',
+                '30346', '30348', '30349', '30350', '30353', '30354', '30355', '30356', '30357', '30358', '30359', '30360', '30361', '30362',
+                '30363', '30364', '30366', '30368', '30369', '30370', '30371', '30374', '30375', '30377', '30378', '30380', '30384', '30385',
+                '30388', '30392', '30394', '30396', '30398', '31106', '31107', '31119', '31126', '31131', '31136', '31139', '31141', '31145', 
+                '31146', '31150', '31156', '31192', '31193', '31195', '31196', '39901']
 
-VALID_REGIONS = [BAY_AREA_REGIONS, LA_REGIONS]
+LA_REGIONS = [LA_COUNTY_ZIPS]
+BAY_AREA_REGIONS = [ALAMEDA_COUNTY_ZIPS, CONTRA_COASTA_COUNTY_ZIPS, MARIN_COUNTY_ZIPS, NAPA_COUNTY_ZIPS, SAN_FRANCISO_COUNTY_ZIPS,
+                    SAN_MATEO_COUNTY_ZIPS, SANTA_CLARA_COUNTY_ZIPS, SOLANO_COUNTY_ZIPS]
+GEORGIA_REGIONS = [ATLANTA_AREA]
+
+VALID_REGIONS = [BAY_AREA_REGIONS, LA_REGIONS, GEORGIA_REGIONS]
 
 def is_valid_linx_zip(zip_code):
     for region in VALID_REGIONS:
@@ -106,22 +120,12 @@ def send_push_message(token, message, extra=None):
         print("issue1")
         print("{} ||| {} ||| {} ||| {}".format(message, extra, exc.errors, exc.response_data))
         # Encountered some likely formatting/validation error.
-       # rollbar.report_exc_info(
-       #     extra_data={
-       #         'token': token,
-       #         'message': message,
-       #         'extra': extra,
-       #         'errors': exc.errors,
-       #         'response_data': exc.response_data,
-       #     })
-        send_admins_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
+        send_admin_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
     except (ConnectionError, HTTPError) as exc:
         print("issue2")
         # Encountered some Connection or HTTP error - retry a few times in
         # case it is transient.
-#        rollbar.report_exc_info(
-#            extra_data={'token': token, 'message': message, 'extra': extra})
-        send_admins_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
+        send_admin_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
 
     try:
         # We got a response back, but we don't know whether it's an error yet.
@@ -137,18 +141,12 @@ def send_push_message(token, message, extra=None):
     except PushResponseError as exc:
         # Encountered some other per-notification error.
         print("error, invalid token")
-#        rollbar.report_exc_info(
-#            extra_data={
-#                'token': token,
-#                'message': message,
-#                'extra': extra,
-#                'push_response': exc.push_response._asdict(),
-#            })
-        send_admins_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
+        send_admin_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
 
 
 
-sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.sqlite3')
+#sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.sqlite3')
+sql_connect = sqlite3.connect(SQL_DATABASE_LOCATION_FILE)
 cursor = sql_connect.cursor()
 
 # Search for friends that are compatible
@@ -160,6 +158,31 @@ reaction_results = cursor.execute(query).fetchall()
 query = "SELECT user_id, friends, info, last_friend_added, json_extract(info, '$.connectWith.sameGender') as same_gender,  json_extract(info, '$.gender') as gender, friend_not_to_add as block_list FROM linx_luser ORDER BY user_id;"
 friends_results = cursor.execute(query).fetchall()
 sql_connect.close()
+
+
+print("-----")
+
+# Create map of friends to their information
+user_info = {}
+for row in friends_results:
+    user_info[row[0]] = []
+    user_info[row[0]].append(row[0])
+    user_info[row[0]].append(row[1])
+    user_info[row[0]].append(row[2])
+    user_info[row[0]].append(row[3])
+    user_info[row[0]].append(row[4])
+    user_info[row[0]].append(row[5])
+
+    # Assign and clean blocked user lists
+    if row[6] != None:
+        user_info[row[0]].append(row[6].strip('][').split(','))
+    else:
+        user_info[row[0]].append(row[6])
+    
+    print("user_info: Information for user {} is {}".format(row[0], row))
+
+print("-----")
+
 
 # Create a map of all a_users -> b_users -> how many times they have reacted the same
 reaction_map = {}
@@ -173,128 +196,153 @@ for row in reaction_results:
         else:
             reaction_map[row[1]][row[2]] += 1
 
-print("reaction_map {}".format(reaction_map))
+for user_id in reaction_map:
+    list_to_print = []
+    for other_id in reaction_map[user_id]:
+        list_to_print.append(other_id)
+    print("reaction_map: User {} has reacted the same to images with users {}".format(user_id, list_to_print))
+        
+print("-----")
+
 
 # Create map of current user friends
-user_to_friends_to_change = {}
+users_exisitng_friends = {}
 for row in friends_results:
-        # create dictionary of user_id to list
-        user_to_friends_to_change[str(row[0])] = row[1].strip('][').split(',')
-
-print("user to friends to change {}".format(user_to_friends_to_change))
-
-# Create a map of users that are above the threshold for minimum "friendliness"
-friends_to_match = []
-for user in reaction_map:
-    for matching_user in reaction_map[user]:
-        if reaction_map[user][matching_user] >= MINIMUM_IMAGES_IN_COMMON:
-
-            friend_combo = (user, matching_user)
-            reverse_friend_combo = (matching_user, user)
-
-            # Get actual friends_results object
-            user_obj = []
-            matching_obj = []
-            for user_chunk in friends_results:
-                if int(user_chunk[0]) is int(user):
-                    user_obj = user_chunk
-                    break
-
-            for matching_chunk in friends_results:
-                if int(matching_chunk[0]) is int(matching_user):
-                    matching_obj = user_chunk
-                    break
-
-            # Block list protection
-            if user_obj[6] != None:
-                blocked_list = user_obj[6].split(",")
-                for blocked_id in blocked_list:
-                    if blocked_id is matching_user:
-                        continue
-
-            if len(friends_to_match) > 1:
-#                if friend_combo in friends_to_match or reverse_friend_combo in friends_to_match:
-                exists = False
-                for combo in friends_to_match:
-                    #print("about to compare {} to {}".format(friend_combo, friends_to_match))
-                    if user in combo or matching_user in combo:
-                        exists = True
-                        break
-
-                if exists == False:
-                    failed_prior_check = False
-
-                    # Ensure users want to match with the new friends gender
-                    if user_obj[4] != 0 or matching_obj[4] != 0:
-                        if user_obj[5] != matching_obj[5]:
-                            failed_prior_check = True
-
-                    # Ensure users are within the correct zip codes available
-                    loaded_info_1 = json.loads(user_obj[2])
-                    loaded_info_2 = json.loads(matching_obj[2])
-                    if (loaded_info_1["location"].get("zip") != None and loaded_info_2["location"].get("zip") != None
-                        and is_valid_linx_zip(loaded_info_1["location"]["zip"])
-                        and is_valid_linx_zip(loaded_info_2["location"]["zip"])
-                        and in_same_city(loaded_info_1["location"]["zip"], loaded_info_2["location"]["zip"])
-                        and failed_prior_check == False):
-                        if matching_user not in user_to_friends_to_change[user]:
-                            friends_to_match.append(friend_combo)
-                            friends_to_match.append(reverse_friend_combo)
-            else:
-                print("Matching user {} not in {} which has user {}".format(matching_user, user_to_friends_to_change[user], user))
-                if matching_user not in user_to_friends_to_change[user]:
-                    friends_to_match.append(friend_combo)
-                    friends_to_match.append(reverse_friend_combo)
-
-
-print("friends to match {}".format(friends_to_match))
-
-user_mapping = {}
-for user_chunk in friends_results:
-    user_mapping[user_chunk[0]] = user_chunk
-
-# create new mapping of current users friends
-new_user_friends = {}
-for combo in friends_to_match:
-
     # create dictionary of user_id to list
-    new_user_friends[str(combo[0])] = user_mapping[int(combo[0])][1].strip('][').split(',')
-    if new_user_friends[str(combo[0])][0] == "":
-        new_user_friends[str(combo[0])].remove("")
+    users_exisitng_friends[str(row[0])] = row[1].strip('][').split(',')
+    print("user_existing_friends: User {} has friend set : {}".format(row[0], users_exisitng_friends[str(row[0])]))
 
-    new_user_friends[str(combo[0])].append(combo[1])
+print("-----")
 
-print("new_user_friends {}".format(new_user_friends))
-print("About to execute commands at {}".format(str(datetime.datetime.now())))
-sql_connect = sqlite3.connect('/home/ubuntu/linx-backend-python-django/linx/db.sqlite3')
-cursor = sql_connect.cursor()
 
+# Determine which friends are above the threshold for minimum "friendliness"
+friends_to_match = {}
 ones_to_actually_notify = []
-for user_id in new_user_friends:
-    loaded_info = json.loads(user_mapping[int(user_id)][2])
-    last_reaction_time = datetime.datetime.strptime(loaded_info["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
-    last_friend_time = datetime.datetime.strptime(user_mapping[int(user_id)][3], "%Y-%m-%d %H:%M:%S.%f")
-    last_reaction_elapsed = datetime.datetime.now() - last_reaction_time
-    last_friend_elapsed = datetime.datetime.now() - last_friend_time
-    print("Time since {} last reacted = {} and the last friend they recieved was {} ago".format(user_id, last_reaction_elapsed.days, last_friend_elapsed.days))
-    if last_reaction_elapsed.days <= TIME_SINCE_LAST_REACTION_MINIMUM and last_friend_elapsed.days > 1:
-        ones_to_actually_notify.append(user_id)
-        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(new_user_friends[user_id])), datetime.datetime.now(), user_id)
+for user in reaction_map:
+    for other_user in reaction_map[user]:
+        # Helper name
+        user_obj = user_info[int(user)]
+        other_user_obj = user_info[int(other_user)]
+
+        # Extracted values
+        user_zip_code = json.loads(user_obj[2])["location"]["zip"]
+        other_user_zip_code = json.loads(other_user_obj[2])["location"]["zip"]
+        user_age  = relativedelta(datetime.datetime.now(), dateutil.parser.parse(json.loads(user_obj[2])["birthday"])).years
+        other_user_age  = relativedelta(datetime.datetime.now(), dateutil.parser.parse(json.loads(other_user_obj[2])["birthday"])).years
+
+        tmp = json.loads(user_obj[2])["connectWith"]["ageRange"]
+        user_age_range = range(int(tmp[0]), int(tmp[1]))
+        tmp = json.loads(other_user_obj[2])["connectWith"]["ageRange"]
+        other_user_age_range = range(int(tmp[0]), int(tmp[1]))
+
+        user_last_reaction = json.loads(user_obj[2])["lastReaction"]
+        other_user_last_reaction = json.loads(other_user_obj[2])["lastReaction"]
+
+        user_block_list = user_info[int(user)][6]
+        other_user_block_list = user_info[int(other_user)][6]
+
+        # Check if users have the minimum friendliness allowed
+        if reaction_map[user][other_user] < MINIMUM_IMAGES_IN_COMMON:
+            continue
+        
+        print("Users {} and {} have met minimum friendliness: {}".format(user, other_user, reaction_map[user][other_user]))
+
+        # Check if the users are in each others block list
+        if user_block_list is not None and other_user in user_block_list:
+            continue
+        elif other_user_block_list is not None and user in other_user_block_list:
+            continue
+        
+        print("Users {} and {} are not on each others block lists: [{}] - [{}]".format(user, other_user, user_block_list, other_user_block_list))
+
+        if user_obj[4] != 0 or other_user_obj[4] != 0:
+            if user_obj[5] != other_user_obj[5]:
+                continue
+
+        print("Users {} and {} are okay with each others genders: {} - {}--{} - {}".format(user, other_user, user_obj[4], other_user_obj[4], user_obj[5], other_user_obj[5]))
+
+        # Check if both users are in the same linx location
+        if not is_valid_linx_zip(user_zip_code) or not is_valid_linx_zip(other_user_zip_code):
+            continue
+
+        if not in_same_city(user_zip_code, other_user_zip_code):
+            continue
+
+        print("Users {} and {} are in the same region: {} - {}".format(user, other_user, user_zip_code, other_user_zip_code))
+
+        # Ensure each friend is within the same age group desired
+        if user_age not in other_user_age_range:
+            continue
+        elif other_user_age not in user_age_range:
+            continue
+
+        print("Users {} and {} are in each others age ranges: {} - {}--{} - {}".format(user, other_user, user_age, other_user_age, user_age_range, other_user_age_range))
+
+        # Only connect users that have profile pictures to other users that have profile pictures
+        if BLOCK_USERS_WITHOUT_PROFILE_PICTURES_FROM_MATCHING_ONES_THAT_DO:
+            if user_obj[3] == "" and other_user_obj != "":
+                continue
+            elif user_obj[3] != "" and other_user_obj == "":
+                continue
+        
+        print("Users {} and {} have passed the profile image check: {}--{} - {}".format(user, other_user, BLOCK_USERS_WITHOUT_PROFILE_PICTURES_FROM_MATCHING_ONES_THAT_DO, user_obj[3], other_user_obj[3]))
+
+        # Ensure that the users are not already in each others friend list
+        if user in users_exisitng_friends[other_user] or other_user in users_exisitng_friends[user]:
+            continue
+
+        print("Users {} and {} are not in their others friends list: {} - {}".format(user, other_user, users_exisitng_friends[user], users_exisitng_friends[other_user]))
+
+        last_user_reaction_time = datetime.datetime.strptime(json.loads(user_obj[2])["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
+        last_user_friend_time = datetime.datetime.strptime(user_obj[3], "%Y-%m-%d %H:%M:%S.%f")
+        last_user_reaction_elapsed = datetime.datetime.now() - last_user_reaction_time
+        last_user_friend_elapsed = datetime.datetime.now() - last_user_friend_time
+
+        last_other_user_reaction_time = datetime.datetime.strptime(json.loads(other_user_obj[2])["lastReaction"].replace("T"," "), "%Y-%m-%d %H:%M:%S")
+        last_other_user_friend_time = datetime.datetime.strptime(other_user_obj[3], "%Y-%m-%d %H:%M:%S.%f")
+        last_other_user_reaction_elapsed = datetime.datetime.now() - last_other_user_reaction_time
+        last_other_user_friend_elapsed = datetime.datetime.now() - last_other_user_friend_time
+        
+        print("Time since user {} last reacted = {} days and the last friend they recieved was {} days ago".format(user_obj[0], last_user_reaction_elapsed.days, last_user_friend_elapsed.days))
+        print("Time since other user {} last reacted = {} days and the last friend they recieved was {} days ago".format(other_user_obj[0], last_other_user_reaction_elapsed.days, last_other_user_friend_elapsed.days))
+        if last_user_reaction_elapsed.days >= TIME_SINCE_LAST_REACTION_MINIMUM or last_user_friend_elapsed.days < HOW_MANY_DAYS_BEFORE_MATCH or \
+                last_other_user_reaction_elapsed.days >= TIME_SINCE_LAST_REACTION_MINIMUM or last_other_user_friend_elapsed.days < HOW_MANY_DAYS_BEFORE_MATCH:
+            continue
+        
+        print("Users {} and {} have passed the time check".format(user, other_user,))
+
+        if friends_to_match.get(user) != None or friends_to_match.get(other_user) != None:
+            continue
+
+        friends_to_match[user] = True
+        friends_to_match[other_user] = True
+        print("New friends to match list {}".format(friends_to_match))
+        print("Users {} and {} have passed the 2nd friend check, are about to be matched, the current user and other users friend list and are being added to notify list".format(user, other_user))
+        ones_to_actually_notify.append(user)
+        users_exisitng_friends[user].append(other_user)
+        ones_to_actually_notify.append(other_user)
+        users_exisitng_friends[other_user].append(user)
+
+        print("About to execute commands at {}".format(str(datetime.datetime.now())))
+        sql_connect = sqlite3.connect(SQL_DATABASE_LOCATION_FILE)
+        cursor = sql_connect.cursor()
+        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(users_exisitng_friends[user])), datetime.datetime.now(), user)
         print("About to run: {}".format(query))
         cursor.execute(query)
         sql_connect.commit()
-    else:
-        pass
-        #print("last_reaction_elapsed = {} - {} AND last_friend_elapses = {} - {}".format(datetime.datetime.now(), last_reaction_time, datetime.datetime.now(), last_friend_time))
-        #print("Either issue with user_id {}: time elapsed: {} or last friend days: {}".format(user_id, str(last_reaction_elapsed), str(last_friend_elapsed)))
-sql_connect.close()
+        query = "UPDATE linx_luser SET friends=\'{}\', last_friend_added='{}' WHERE user_id = {}".format("[{}]".format(",".join(users_exisitng_friends[other_user])), datetime.datetime.now(), other_user)
+        print("About to run: {}".format(query))
+        cursor.execute(query)
+        sql_connect.commit()
+        sql_connect.close()
 
 print("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
 print("Actually notifying {}".format(ones_to_actually_notify))
-send_admins_message("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
+send_admin_message("About to send notifications to {} out of a total {} users: {}".format(len(ones_to_actually_notify), len(friends_results), ones_to_actually_notify))
 
 for user_id in ones_to_actually_notify:
-    loaded_info = json.loads(user_mapping[int(user_id)][2])
+    user_obj = user_info[int(user_id)]
+    loaded_info = json.loads(user_obj[2])
     expo_push_token = loaded_info["expoPushToken"]
     print("About to send notifications for user {} at token {}".format(user_id, expo_push_token))
     data = {"user_id": "{}".format(user_id),
@@ -302,3 +350,5 @@ for user_id in ones_to_actually_notify:
          "type": "friends"
          }
     send_push_message(expo_push_token, "You have a new friend! \uD83D\uDE00", data)
+
+print("#####")
