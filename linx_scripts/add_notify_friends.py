@@ -120,12 +120,12 @@ def send_push_message(token, message, extra=None):
         print("issue1")
         print("{} ||| {} ||| {} ||| {}".format(message, extra, exc.errors, exc.response_data))
         # Encountered some likely formatting/validation error.
-        send_admin_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
+        send_admins_message("Issue with push server with token {}, message {} and extra {}".format(token, message, extra))
     except (ConnectionError, HTTPError) as exc:
         print("issue2")
         # Encountered some Connection or HTTP error - retry a few times in
         # case it is transient.
-        send_admin_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
+        send_admins_message("Issue with connection with token {}, message {} and extra {}".format(token, message, extra))
 
     try:
         # We got a response back, but we don't know whether it's an error yet.
@@ -141,7 +141,7 @@ def send_push_message(token, message, extra=None):
     except PushResponseError as exc:
         # Encountered some other per-notification error.
         print("error, invalid token")
-        send_admin_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
+        send_admins_message("Issue with invalid token with token {}, message {} and extra {}".format(token, message, extra))
 
 
 
@@ -338,7 +338,7 @@ for user in reaction_map:
 
 print("About to send notifications to {} out of a total {} users".format(len(ones_to_actually_notify), len(friends_results)))
 print("Actually notifying {}".format(ones_to_actually_notify))
-send_admin_message("About to send notifications to {} out of a total {} users: {}".format(len(ones_to_actually_notify), len(friends_results), ones_to_actually_notify))
+send_admins_message("About to send notifications to {} out of a total {} users: {}".format(len(ones_to_actually_notify), len(friends_results), ones_to_actually_notify))
 
 for user_id in ones_to_actually_notify:
     user_obj = user_info[int(user_id)]
