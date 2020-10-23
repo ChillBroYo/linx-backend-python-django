@@ -1,5 +1,5 @@
 -- Get Weekly amounts of reaction and number of unique users that are not part of the team that sent them
-SELECT COUNT(*) as weekly_messsages, COUNT(DISTINCT ll.username) as distinct_users FROM linx_luser ll JOIN linx_reactions lr ON lr.user_id = ll.user_id WHERE lr.created_at BETWEEN date('now', '-7 days') AND 'now' AND ll.username NOT IN ('Sams', 'anguyen', 'mendez3800', 'Kaya');   
+SELECT COUNT(*) as weekly_reactions, COUNT(DISTINCT ll.username) as distinct_users FROM linx_luser ll JOIN linx_reactions lr ON lr.user_id = ll.user_id WHERE lr.created_at BETWEEN date('now', '-7 days') AND 'now' AND ll.username NOT IN ('Sams', 'anguyen', 'mendez3800', 'Kaya');   
 
 -- Get Weekly amounts of messaging and number of unique users besides the team that sent them
 SELECT COUNT(*) as weekly_messages, COUNT(DISTINCT ll.username) as weekly_unique_messager_count FROM linx_luser ll JOIN linx_messages lm ON ll.user_id = lm.user_id WHERE lm.created_at BETWEEN date('now', '-7 days') AND 'now' AND ll.username NOT IN ('Sams', 'anguyen', 'mendez3800', 'Kaya');
