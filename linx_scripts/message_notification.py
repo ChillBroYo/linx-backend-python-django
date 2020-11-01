@@ -44,8 +44,7 @@ def send_push_message(token, message, extra=None):
         print("error")
         raise self.retry(exc=exc)
 
-db_location = 'db.sqlite3'
-#db_location = '/home/ubuntu/linx-backend-python-django/linx/db.sqlite3'
+db_location = '/home/ubuntu/linx-backend-python-django/linx/db.sqlite3'
 sql_connect = sqlite3.connect(db_location)
 cursor = sql_connect.cursor()
 ids_to_notify = {}
