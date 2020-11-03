@@ -1,15 +1,14 @@
-"""Webcall views dealing with all backend functionality"""
-import uuid
-import logging
+"""Views file dealing with all endpoints that do not fit in specialty file locations"""
+import uuid, logging, pytz, io
 from django.utils import timezone
-import pytz
-import io
-import boto3
 from django.db.models import Q
 from django.db import connection
 from django.http import JsonResponse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+
+import boto3
+
+from linx.constants import VALID_REGIONS
 from linx.models import LUser, Messages, TokenAuth, Images, Reactions
 
 SUPER_SECURE_STRING = "123"
@@ -19,76 +18,6 @@ LOGGER = logging.getLogger('django')
 
 # Debug param to prevent bad s3 requests
 DEV = True
-
-ALAMEDA_COUNTY_ZIPS = ['94710', '94720', '95377', '95391', '94501', '94502', '94514', '94536', '94538', '94540', '94539', '94542', '94541', '94544',
-                       '94546', '94545', '94552', '94551', '94555', '94560', '94566', '94568', '94577', '94579', '94578', '94580', '94586', '94588',
-                       '94587', '94601', '94603', '94602', '94605', '94607', '94606', '94609', '94608', '94611', '94610', '94613', '94612', '94618',
-                       '94619', '94621', '94660', '94661', '94701', '94703', '94702', '94705', '94704', '94707', '94706', '94709', '94708']
-CONTRA_COASTA_COUNTY_ZIPS = ['94596', '94595', '94598', '94597', '94507', '94506', '94509', '94801', '94511', '94803', '94513', '94802', '94805',
-                             '94804', '94807', '94517', '94516', '94806', '94519', '94518', '94521', '94520', '94523', '94525', '94526', '94505',
-                             '94528', '94531', '94530', '94548', '94547', '94549', '94553', '94556', '94561', '94563', '94565', '94564', '94569',
-                             '94572', '94583', '94582']
-MARIN_COUNTY_ZIPS = ['94903', '94901', '94904', '94920', '94925', '94924', '94929', '94930', '94937', '94933', '94939', '94938', '94941', '94940',
-                     '94947', '94946', '94949', '94948', '94950', '94957', '94956', '94963', '94960', '94965', '94964', '94970', '94971', '94973']
-NAPA_COUNTY_ZIPS = ['94559', '94558', '94562', '94599', '94567', '94573', '94508', '94574', '94576']
-SAN_FRANCISO_COUNTY_ZIPS = ['94102', '94104', '94103', '94105', '94108', '94107', '94110', '94109', '94112', '94111', '94115', '94114', '94117',
-                            '94116', '94118', '94121', '94123', '94122', '94124', '94127', '94126', '94129', '94131', '94130', '94133', '94132',
-                            '94134', '94139', '94143', '94151', '94159', '94158', '94188', '94177']
-SAN_MATEO_COUNTY_ZIPS = ['94063', '94062', '94065', '94066', '94070', '94080', '94074', '94401', '94403', '94402', '94404', '94002', '94010',
-                         '94005', '94014', '94015', '94018', '94020', '94019', '94021', '94025', '94027', '94030', '94038', '94037', '94044',
-                         '94061', '94060']
-SANTA_CLARA_COUNTY_ZIPS = ['94085', '94087', '94086', '94089', '94088', '95002', '95009', '95008', '95013', '95014', '95020', '95023', '95031',
-                           '95030', '95033', '95032', '95035', '95037', '94301', '95042', '94303', '95044', '95050', '94305', '94304', '95046',
-                           '95051', '94306', '95054', '95070', '95111', '95110', '95113', '95112', '95117', '95116', '95119', '95118', '95121',
-                           '95120', '95123', '95122', '95125', '95124', '95127', '95126', '95129', '95128', '95131', '95130', '95133', '95132',
-                           '95135', '95134', '95136', '95139', '95138', '95141', '95140', '95148', '94550', '95150', '94022', '94024', '95190',
-                           '95192', '94028', '94040', '94041', '94043']
-SOLANO_COUNTY_ZIPS = ['94590', '94589', '94592', '94591', '95688', '95618', '95687', '94534', '95620', '94533', '94535', '95694', '95625',
-                      '94503', '94510', '94512', '94585']
-SONOMA_COUNTY_ZIPS = ['95409', '95412', '95416', '95419', '95421', '95425', '95430', '95433', '95436', '95439', '95442', '95441', '95444',
-                      '95446', '95445', '95448', '95450', '95452', '95462', '95465', '95472', '95471', '95476', '94515', '95486', '95492',
-                      '95497', '94923', '94922', '94926', '94928', '94931', '94951', '94952', '94954', '94972', '95402', '95401', '95404',
-                      '95403', '95405', '95407']
-LA_COUNTY_ZIPS = ['90895', '91001', '91006', '91007', '91011', '91010', '91016', '91020', '91017', '93510', '91023', '91024', '91030', '91040',
-                  '91043', '91042', '91101', '91103', '91105', '93534', '91104', '93532', '91107', '93536', '91106', '93535', '91108', '93539',
-                  '93543', '93544', '91123', '93551', '93550', '91125', '93553', '93552', '91182', '93563', '91189', '91202', '91201', '93591',
-                  '91204', '93599', '91203', '91206', '91205', '91208', '91207', '91210', '91214', '91302', '91301', '91304', '91303', '91306',
-                  '91307', '91310', '91311', '91316', '91321', '91325', '91324', '91326', '91331', '91330', '91335', '91340', '91343', '91342',
-                  '91345', '91344', '91350', '91346', '91352', '91351', '91354', '91356', '91355', '91357', '91361', '91364', '91367', '91365',
-                  '91381', '91383', '91384', '91387', '91390', '91402', '91401', '91403', '91406', '91405', '91411', '91423', '91436', '91495',
-                  '91501', '91502', '91505', '91504', '91506', '91602', '91601', '91604', '91606', '91605', '91608', '91607', '91614', '91706',
-                  '91702', '91711', '91722', '91724', '91723', '91732', '91731', '91733', '91735', '91740', '91741', '91745', '91744', '91747',
-                  '91746', '91748', '91750', '91755', '91754', '91759', '91765', '91767', '91766', '91768', '91770', '91773', '91772', '91776',
-                  '91775', '91780', '91778', '91790', '91789', '91792', '91791', '91793', '91801', '91803', '91008', '92397', '90002', '90001',
-                  '90004', '90003', '90006', '90005', '90008', '90007', '90010', '90012', '90011', '90014', '90013', '90016', '90015', '90018',
-                  '90017', '90020', '90019', '90022', '90021', '90024', '90023', '90026', '90025', '90028', '90027', '90029', '90032', '90031',
-                  '90034', '90033', '90036', '90035', '90038', '90037', '90040', '90039', '90042', '90041', '90044', '90043', '90046', '90045',
-                  '90048', '90047', '90049', '90052', '90056', '90058', '90057', '90060', '90059', '90062', '90061', '90064', '90063', '90066',
-                  '90065', '90068', '90067', '90069', '90071', '90074', '90077', '90084', '90089', '90095', '90094', '90096', '90099', '90201',
-                  '90189', '90211', '90210', '90212', '90221', '90220', '90222', '90230', '90232', '90241', '90240', '90245', '90242', '90248',
-                  '90247', '90250', '90249', '90254', '90260', '90255', '90262', '90264', '90263', '90266', '90265', '90270', '90274', '90272',
-                  '90277', '90275', '90280', '90278', '90291', '90290', '90293', '90292', '90295', '90301', '90296', '90303', '90302', '90305',
-                  '90304', '90402', '90401', '90404', '90403', '90406', '93243', '90405', '90501', '90503', '90502', '90505', '90504', '90508',
-                  '90601', '90603', '90602', '90605', '90604', '90606', '90631', '90639', '90638', '90650', '90640', '90660', '90670', '90702',
-                  '90701', '90704', '90703', '90706', '90710', '90713', '90712', '90715', '90717', '90716', '90731', '90723', '90733', '90732',
-                  '90745', '90744', '90747', '90746', '90755', '90803', '90802', '90805', '90804', '90807', '90806', '90808', '90813', '90810',
-                  '90815', '90814', '90840', '91710']
-ATLANTA_AREA = ['30301', '30302', '30303', '30304', '30305', '30306', '30307', '30308', '30309', '30310', '30311', '30312', '30313', '30314', 
-                '30315', '30316', '30317', '30318', '30319', '30320', '30321', '30322', '30324', '30325', '30326', '30327', '30328', '30329',
-                '30331', '30332', '30333', '30334', '30336', '30337', '30338', '30339', '30340', '30341', '30342', '30343', '30344', '30345',
-                '30346', '30348', '30349', '30350', '30353', '30354', '30355', '30356', '30357', '30358', '30359', '30360', '30361', '30362',
-                '30363', '30364', '30366', '30368', '30369', '30370', '30371', '30374', '30375', '30377', '30378', '30380', '30384', '30385',
-                '30388', '30392', '30394', '30396', '30398', '31106', '31107', '31119', '31126', '31131', '31136', '31139', '31141', '31145', 
-                '31146', '31150', '31156', '31192', '31193', '31195', '31196', '39901',
-                '30601', '30602', '30603', '30604', '30605', '30606', '30607', '30608', '30609', '30612']
-                # the 30601s are from athens and not atlanta @kaya
-
-LA_REGIONS = [LA_COUNTY_ZIPS]
-BAY_AREA_REGIONS = [ALAMEDA_COUNTY_ZIPS, CONTRA_COASTA_COUNTY_ZIPS, MARIN_COUNTY_ZIPS, NAPA_COUNTY_ZIPS, SAN_FRANCISO_COUNTY_ZIPS,
-                    SAN_MATEO_COUNTY_ZIPS, SANTA_CLARA_COUNTY_ZIPS, SOLANO_COUNTY_ZIPS]
-GEORGIA_REGIONS = [ATLANTA_AREA]
-
-VALID_REGIONS = [BAY_AREA_REGIONS, LA_REGIONS, GEORGIA_REGIONS]
 
 def is_valid_linx_zip_helper(zip_code):
     for region in VALID_REGIONS:
@@ -132,135 +61,6 @@ def is_valid_linx_zip(request):
     return JsonResponse(collected_values, status=200)
 
 
-# DEV Endpoint /delete_account, PROD ENDPOINT /delete-account
-# NOTE This is a soft delete, the account needs to be manually erased
-@csrf_exempt
-def delete_account(request):
-    """Soft deletes the users account, allowing another account to be created under the same username
-        POST Request Args:
-            user_id: the user id of the user that wants to delete their account
-            token: the potentially correct token of the user_id specified
-    """
-    collected_values = {}
-    
-    if request.method != 'POST':
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(collected_values, status=400)
-    
-    uid = request.POST["user_id"]
-    token = request.POST["token"]
-
-    # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
-    if not is_valid:
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Invalid Token"
-        return JsonResponse(collected_values, status=400)
-
-    change_query = "UPDATE linx_luser SET username = \'{}\' WHERE user_id = {}".format("DELETE ME", uid)
-    with connection.cursor() as cursor:
-        cursor.execute(change_query)
-
-    collected_values["user_id"] = uid
-    collected_values["token"] = token
-    collected_values["executed_query"] = change_query
-
-    LOGGER.info("Delete account request: %s", collected_values)
-    return JsonResponse(collected_values, status=200)
-    
-
-
-# DEV ENDPOINT /remove_friend, PROD ENDPOINT /remove-friend
-@csrf_exempt
-def remove_friend(request):
-    """Removes a friend from the list and adds them to the block list for each user
-        If one user requests a block, these people can never connect again and are disconnected
-        POST Request Args:
-            user_id: the user id of the user requesting this
-            oid: the user id of other user to block/remove
-            token: the potentially correct token of the user_id specified
-    """
-    collected_values = {}
-
-    if request.method != 'POST':
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(collected_values, status=400)
-    
-    uid = request.POST["user_id"]
-    oid = request.POST["oid"]
-    token = request.POST["token"]
-
-    # Check auth
-    is_valid, collected_values["token"] = check_auth(uid, token, timezone.now())
-    if not is_valid:
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Invalid Token"
-        return JsonResponse(collected_values, status=400)
-
-    user_raw_query = "SELECT friends, friend_not_to_add from linx_luser WHERE user_id = {}".format(uid)
-    other_raw_query = "SELECT friends, friend_not_to_add from linx_luser WHERE user_id = {}".format(oid)
-    with connection.cursor() as cursor:
-        cursor.execute(user_raw_query)
-        values = cursor.fetchall()
-        user_friends = values[0][0]
-        if user_friends == None:
-                user_friends = ""
-        user_blocked = values[0][1]
-        if user_blocked == None:
-                user_blocked = ""
-
-        cursor.execute(other_raw_query)
-        values = cursor.fetchall()
-        other_friends = values[0][0]
-        if other_friends == None:
-                other_friends = ""
-        other_blocked = values[0][1]
-        if other_blocked == None:
-                other_blocked = ""
-
-        friendsr = user_friends.replace("[", "").replace("]", "")
-        split_user_friends = friendsr.split(",")
-        split_user_friends.remove(oid)
-        new_user_friends = "[" + ",".join(split_user_friends) + "]"
-    
-        block_listr = user_blocked.replace("[", "").replace("]", "")
-        block_list = block_listr.split(",")
-        if block_list is []:
-            block_list = [oid]
-        else:
-            block_list.append(oid)
-        new_user_block = "[" + ",".join(block_list) + "]"
-
-        ofriendsr = other_friends.replace("[", "").replace("]", "")
-        other_friends = ofriendsr.split(",") 
-        other_friends.remove(uid)
-        new_other_friends = "[" + ",".join(other_friends) + "]"
-
-        block_listr2 = other_blocked.replace("[", "").replace("]", "")
-        block_list2 = block_listr2.split(",")
-        if block_list2 is []:
-            block_list2 = [uid]
-        else:
-            block_list2.append(uid)
-        new_other_block = "[" + ",".join(block_list2) + "]"
-    
-        user_raw_query2 = "UPDATE linx_luser SET friends = \'{}\', friend_not_to_add = \'{}\' WHERE user_id = {}".format(new_user_friends, new_user_block, uid)
-        other_raw_query2 = "UPDATE linx_luser SET friends = \'{}\', friend_not_to_add = \'{}\' WHERE user_id = {}".format(new_other_friends, new_other_block, oid)
-
-        cursor.execute(user_raw_query2)
-        cursor.execute(other_raw_query2)
-
-        collected_values["uid"] = uid
-        collected_values["oid"] = oid
-        collected_values["token"] = token
-        collected_values["raw_query_1"] = user_raw_query2
-        collected_values["raw_query_2"] = other_raw_query2
-
-    LOGGER.info("Block user request: %v", collected_values)
-    return JsonResponse(collected_values, status=200)
-    
     
 # DEV ENDPOINT /common_images_between_users, PROD ENDPOINT /common-images-between-users
 @csrf_exempt
@@ -318,108 +118,7 @@ def common_images_between_users(request):
     LOGGER.info("Common images between users result: %s", collected_values)
     return JsonResponse(collected_values, status=200)
 
-# Unique Contraint on username and email field
-# DEV ENDPOINT /sign_up, PROD ENDPOINT /sign-up
-@csrf_exempt
-def sign_up(request):
-    """User signup through app based sign up strategy
-        Only adds a new user and if sucessful creates a new key and returns the new uid and token
-        POST Request Body Args:
-            email (string): the user's email
-            username (string): the user's username
-            password (string): the user's password
-            profile_picture (string): the link to the user's profile picture if desired
-            security_level (string): the users security level, this should only be `user` for now
-            info (json): any additonal information stored in JSON format
-    """
-    collected_values = {}
 
-    # Only accept POST requests for this endpoint
-    if request.method != 'POST':
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(collected_values, status=400)
-
-    # Extract Body Params
-    email = request.POST['email']
-    username = request.POST['username']
-    password = request.POST['password']
-    profile_picture = request.POST["profile_picture"]
-    security_level = request.POST['security_level']
-    info = request.POST['info']
-
-    # Check if user with the same username already exists
-    user = LUser.objects.filter(username=username)
-    if user:
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Username Already Exists"
-        return JsonResponse(collected_values, status=400)
-
-    # Check if user with the same email exists
-    user = LUser.objects.filter(email=email)
-    if user:
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Email Already Exists"
-        return JsonResponse(collected_values, status=400)
-
-    # Create the user, with no images visited or friends
-    new_user = LUser.create_luser(username=username, email=email, profile_picture=profile_picture,
-                                  image_index=0, images_visited="[]", password=password,
-                                  friends="[]", security_level=security_level, last_friend_added=timezone.now(),
-                                  info=info)
-
-    # Create new token for user in TokenAuth db
-    collected_values["token"] = generate_new_token(new_user.user_id)
-
-    # Store additional values for return message
-    collected_values["success"] = True
-    collected_values["uid"] = new_user.user_id
-
-    LOGGER.info("Sign Up Result: %s", collected_values)
-    return JsonResponse(collected_values, status=200)
-
-# DEV ENDPOINT /sign_in, PROD ENDPOINT /sign-in
-@csrf_exempt
-def sign_in(request):
-    """Sign in request that with either authentiate and acquire appropriate tokens or reject them
-        GET Request Args:
-            username: the user's username
-            password: the user's password
-    """
-    collected_values = {}
-
-    # Only accept GET requests for this endpoint
-    if request.method != 'GET':
-        collected_values["success"] = False
-        collected_values["errmsg"] = "Wrong HTTP verb"
-        return JsonResponse(collected_values, status=400)
-
-    # Extract params
-    username = request.GET['username']
-    password = request.GET['password']
-
-    # Check if user exists
-    user = LUser.objects.filter(username=username, password=password)
-    if not user:
-        collected_values["success"] = False
-        collected_values["errmsg"] = "User doesn't exist"
-        return JsonResponse(collected_values, status=400)
-
-    # Get the token of the user and store it
-    auth_user = TokenAuth.objects.filter(user_id=user[0].user_id)
-    collected_values["token"] = auth_user[0].token
-
-    # Collect remaining values
-    collected_values["uid"] = user[0].user_id
-    collected_values["email"] = user[0].email
-    collected_values["username"] = user[0].username
-    collected_values["password"] = user[0].password
-    collected_values["info"] = str(user[0].info)
-    collected_values["friends"] = user[0].friends
-    collected_values["success"] = True
-
-    LOGGER.info("Sign In Result: %s", collected_values)
-    return JsonResponse(collected_values, status=200)
 
 # DEV ENDPOINT /add_message, PROD ENDPOINT /add-message
 @csrf_exempt
@@ -681,36 +380,6 @@ def get_profile(request):
     LOGGER.info("Get Profile Result: %s", user)
     return JsonResponse(collected_values, status=200)
 
-def check_auth(uid, token, ts_check):
-    """Utility function used for checking if the token is valid for a user
-        Args:
-            uid (string): a user's id
-            token (token string): a token value to check
-            ts_check (timestamp): the ts of the time to check
-    """
-    if token is None:
-        token_row = TokenAuth.objects.filter(user_id=uid).order_by("-created_at")[:1]
-    else:
-        token_row = TokenAuth.objects.filter(user_id=uid, token=token).order_by("-created_at")[:1]
-
-    if not token_row:
-        return False, None
-
-    difference = ts_check - timezone.now()
-
-    if difference.days > 90:
-        return False, token_row[0].token
-    return True, token_row[0].token
-
-def generate_new_token(uid):
-    """Function to generate authenticated users, auth tokens
-        Args:
-            uid (string): a user's id
-    """
-    random_token = uuid.uuid4()
-    token = TokenAuth(user_id=uid, token=random_token)
-    token.save()
-    return random_token
 
 # DEV ENDPOINT /get_image, PROD ENDPOINT /get-image
 @csrf_exempt
