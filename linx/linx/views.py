@@ -224,6 +224,8 @@ def remove_friend(request):
         split_user_friends = friendsr.split(",")
         split_user_friends.remove(oid)
         new_user_friends = "[" + ",".join(split_user_friends) + "]"
+        if new_user_friends.startswith("[,"):
+            new_user_friends.remove(",")
     
         block_listr = user_blocked.replace("[", "").replace("]", "")
         block_list = block_listr.split(",")
